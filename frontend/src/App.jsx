@@ -33,6 +33,7 @@ export function App() {
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [editingQuiz, setEditingQuiz] = useState(null);
   const { toasts, pushToast, removeToast } = useToasts();
 
   const socketRef = useRef(null);
@@ -161,6 +162,51 @@ export function App() {
     }
   };
 
+  const createQuiz = async (payload) => {
+    try {
+      const created = await request('/api/quizzes', 'POST', token, payload);
+      setEditingQuiz(created);
+      setView('create-quiz');
+      await loadDashboard();
+      pushToast('Квиз создан. Добавьте вопросы и опубликуйте.', 'success');
+    } catch (e) {
+      pushToast(e.message, 'error');
+    }
+  };
+
+  const addQuestionToQuiz = async (quizId, payload) => {
+    try {
+      await request(`/api/quizzes/${quizId}/questions`, 'POST', token, payload);
+      const quiz = await request(`/api/quizzes/${quizId}`, 'GET', token);
+      setEditingQuiz(quiz);
+      await loadDashboard();
+      pushToast('Вопрос добавлен', 'success');
+    } catch (e) {
+      pushToast(e.message, 'error');
+    }
+  };
+
+  const publishQuiz = async (quizId) => {
+    try {
+      const updated = await request(`/api/quizzes/${quizId}`, 'PATCH', token, { status: 'PUBLISHED' });
+      setEditingQuiz(updated);
+      await loadDashboard();
+      pushToast('Квиз опубликован', 'success');
+    } catch (e) {
+      pushToast(e.message, 'error');
+    }
+  };
+
+  const openQuizEditor = async (quizId) => {
+    try {
+      const fullQuiz = await request(`/api/quizzes/${quizId}`, 'GET', token);
+      setEditingQuiz(fullQuiz);
+      setView('create-quiz');
+    } catch (e) {
+      pushToast(e.message, 'error');
+    }
+  };
+
   const startQuiz = () => socketRef.current?.emit('session:start', { sessionId: session.id }, (ack) => !ack.ok && pushToast(ack.error, 'error'));
   const nextQuestion = () => socketRef.current?.emit('session:next-question', { sessionId: session.id }, (ack) => !ack.ok && pushToast(ack.error, 'error'));
   const submitAnswer = (optionIds) => socketRef.current?.emit('session:submit-answer', { sessionId: session.id, questionId: currentQuestion.id, optionIds }, (ack) => {
@@ -194,9 +240,10 @@ export function App() {
             transition={{ duration: 0.35 }}
           >
             {view === 'auth' && <AuthCard onSubmit={onLogin} />}
-            {view === 'profile' && <ProfileCard user={user} dashboard={dashboard} quizzes={quizList} onLaunch={launchSession} />}
+            {view === 'profile' && <ProfileCard user={user} dashboard={dashboard} quizzes={quizList} onLaunch={launchSession} onCreateQuiz={createQuiz} onEditQuiz={openQuizEditor} />}
             {view === 'join' && <JoinCard onJoin={joinByCode} />}
             {view === 'history' && <HistoryCard dashboard={dashboard} role={user?.role} />}
+            {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onAddQuestion={addQuestionToQuiz} onPublish={publishQuiz} onBack={() => setView('profile')} />}
             {view === 'waiting' && <WaitingCard session={session} user={user} onStart={startQuiz} />}
             {view === 'quiz' && <QuestionCard question={currentQuestion} onSubmit={submitAnswer} user={user} onNext={nextQuestion} />}
             {view === 'results' && <ResultsCard leaderboard={leaderboard} onBack={() => setView('profile')} />}
@@ -225,12 +272,109 @@ function AuthCard({ onSubmit }) {
   </div>;
 }
 
-function ProfileCard({ user, dashboard, quizzes, onLaunch }) {
+function ProfileCard({ user, dashboard, quizzes, onLaunch, onCreateQuiz, onEditQuiz }) {
+  const [newQuiz, setNewQuiz] = useState({ title: '', description: '', categoryNames: '' });
+
   return <div>
     <h2>Профиль</h2><p>{user?.displayName} ({user?.role})</p>
-    {user?.role === 'ORGANIZER' && <div className="stack"><h3>Мои квизы</h3>{quizzes?.map((quiz) => <article key={quiz.id} className="tile"><b>{quiz.title}</b><span>{quiz._count.questions} вопросов</span><button onClick={() => onLaunch(quiz.id)}>Запустить</button></article>)}</div>}
+    {user?.role === 'ORGANIZER' && <div className="stack">
+      <h3>Создать квиз</h3>
+      <form className="stack" onSubmit={(e) => {
+        e.preventDefault();
+        onCreateQuiz({
+          title: newQuiz.title,
+          description: newQuiz.description,
+          categoryNames: newQuiz.categoryNames.split(',').map((s) => s.trim()).filter(Boolean)
+        });
+      }}>
+        <input placeholder="Название квиза" value={newQuiz.title} onChange={(e) => setNewQuiz({ ...newQuiz, title: e.target.value })} required />
+        <input placeholder="Описание" value={newQuiz.description} onChange={(e) => setNewQuiz({ ...newQuiz, description: e.target.value })} />
+        <input placeholder="Категории через запятую" value={newQuiz.categoryNames} onChange={(e) => setNewQuiz({ ...newQuiz, categoryNames: e.target.value })} />
+        <button>Создать</button>
+      </form>
+
+      <h3>Мои квизы</h3>
+      {quizzes?.map((quiz) => (
+        <article key={quiz.id} className="tile">
+          <b>{quiz.title}</b>
+          <span>{quiz._count.questions} вопросов</span>
+          <div className="row-actions">
+            <button className="ghost" onClick={() => onEditQuiz(quiz.id)}>Редактировать</button>
+            <button onClick={() => onLaunch(quiz.id)}>Запустить</button>
+          </div>
+        </article>
+      ))}
+    </div>}
     {user?.role === 'PARTICIPANT' && <p>Используйте «Присоединиться», чтобы войти в активный квиз.</p>}
     {!dashboard && <p>Загрузка...</p>}
+  </div>;
+}
+
+function CreateQuizCard({ quiz, onAddQuestion, onPublish, onBack }) {
+  const [question, setQuestion] = useState({
+    type: 'TEXT',
+    prompt: '',
+    imageUrl: '',
+    allowMultiple: false,
+    points: 100,
+    options: [
+      { text: '', isCorrect: false },
+      { text: '', isCorrect: false }
+    ]
+  });
+
+  if (!quiz) {
+    return <div><h2>Редактор квиза</h2><p>Сначала создайте квиз в профиле.</p><button onClick={onBack}>Назад</button></div>;
+  }
+
+  const changeOption = (index, patch) => {
+    setQuestion((prev) => ({
+      ...prev,
+      options: prev.options.map((option, idx) => (idx === index ? { ...option, ...patch } : option))
+    }));
+  };
+
+  return <div className="stack">
+    <h2>Редактор квиза: {quiz.title}</h2>
+    <p>Статус: <b>{quiz.status}</b></p>
+
+    <form className="stack" onSubmit={(e) => {
+      e.preventDefault();
+      onAddQuestion(quiz.id, {
+        ...question,
+        options: question.options.filter((option) => option.text.trim())
+      });
+    }}>
+      <select value={question.type} onChange={(e) => setQuestion({ ...question, type: e.target.value })}>
+        <option value="TEXT">Текстовый вопрос</option>
+        <option value="IMAGE">Вопрос с изображением</option>
+      </select>
+      <input placeholder="Текст вопроса" value={question.prompt} onChange={(e) => setQuestion({ ...question, prompt: e.target.value })} required />
+      {question.type === 'IMAGE' && <input placeholder="URL изображения" value={question.imageUrl} onChange={(e) => setQuestion({ ...question, imageUrl: e.target.value })} required />}
+      <label><input type="checkbox" checked={question.allowMultiple} onChange={(e) => setQuestion({ ...question, allowMultiple: e.target.checked })} /> Множественный выбор</label>
+      <input type="number" min="10" max="1000" value={question.points} onChange={(e) => setQuestion({ ...question, points: Number(e.target.value) })} />
+
+      <h4>Варианты ответа</h4>
+      {question.options.map((option, idx) => (
+        <div key={idx} className="option-editor">
+          <input placeholder={`Вариант ${idx + 1}`} value={option.text} onChange={(e) => changeOption(idx, { text: e.target.value })} required />
+          <label><input type="checkbox" checked={option.isCorrect} onChange={(e) => changeOption(idx, { isCorrect: e.target.checked })} /> Правильный</label>
+        </div>
+      ))}
+      <button type="button" className="ghost" onClick={() => setQuestion((prev) => ({ ...prev, options: [...prev.options, { text: '', isCorrect: false }] }))}>+ Добавить вариант</button>
+
+      <button>Сохранить вопрос</button>
+    </form>
+
+    <div className="stack">
+      <h4>Текущие вопросы ({quiz.questions?.length || 0})</h4>
+      {quiz.questions?.map((q) => <article key={q.id} className="tile"><b>{q.orderIndex + 1}. {q.prompt}</b><span>{q.points} очков</span></article>)}
+    </div>
+
+    <div className="row-actions">
+      <button className="ghost" onClick={onBack}>Назад</button>
+      <button onClick={() => onPublish(quiz.id)} disabled={!quiz.questions?.length}>Опубликовать квиз</button>
+    </div>
   </div>;
 }
 
