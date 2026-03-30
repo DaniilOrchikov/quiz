@@ -192,6 +192,7 @@ export function App() {
       setEditingQuiz(updated);
       await loadDashboard();
       pushToast('Квиз опубликован', 'success');
+      setView('quizzes');
     } catch (e) {
       pushToast(e.message, 'error');
     }
@@ -225,30 +226,33 @@ export function App() {
         secondsLeft={secondsLeft}
         activeQuiz={activeQuiz}
         waiting={view === 'waiting'}
+        activeView={view === 'create-quiz' ? 'quizzes' : view}
         onNavigate={setView}
         onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
       />
 
       <main className="content">
-        <AnimatePresence mode="wait">
-          <motion.section
-            key={view}
-            className="card"
-            initial={{ opacity: 0, y: 30, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.98 }}
-            transition={{ duration: 0.35 }}
-          >
-            {view === 'auth' && <AuthCard onSubmit={onLogin} />}
-            {view === 'profile' && <ProfileCard user={user} dashboard={dashboard} quizzes={quizList} onLaunch={launchSession} onCreateQuiz={createQuiz} onEditQuiz={openQuizEditor} />}
-            {view === 'join' && <JoinCard onJoin={joinByCode} />}
-            {view === 'history' && <HistoryCard dashboard={dashboard} role={user?.role} />}
-            {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onAddQuestion={addQuestionToQuiz} onPublish={publishQuiz} onBack={() => setView('profile')} />}
-            {view === 'waiting' && <WaitingCard session={session} user={user} onStart={startQuiz} />}
-            {view === 'quiz' && <QuestionCard question={currentQuestion} onSubmit={submitAnswer} user={user} onNext={nextQuestion} />}
-            {view === 'results' && <ResultsCard leaderboard={leaderboard} onBack={() => setView('profile')} />}
-          </motion.section>
-        </AnimatePresence>
+        <motion.section className="card" layout transition={{ layout: { duration: 0.35 } }}>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={view}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -14 }}
+              transition={{ duration: 0.25 }}
+            >
+              {view === 'auth' && <AuthCard onSubmit={onLogin} />}
+              {view === 'profile' && <ProfileCard user={user} dashboard={dashboard} />}
+              {view === 'quizzes' && <OrganizerQuizzesCard quizzes={quizList} onLaunch={launchSession} onCreateQuiz={createQuiz} onEditQuiz={openQuizEditor} />}
+              {view === 'join' && <JoinCard onJoin={joinByCode} />}
+              {view === 'history' && <HistoryCard dashboard={dashboard} role={user?.role} />}
+              {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onAddQuestion={addQuestionToQuiz} onPublish={publishQuiz} onBack={() => setView('quizzes')} />}
+              {view === 'waiting' && <WaitingCard session={session} user={user} onStart={startQuiz} />}
+              {view === 'quiz' && <QuestionCard question={currentQuestion} onSubmit={submitAnswer} user={user} onNext={nextQuestion} />}
+              {view === 'results' && <ResultsCard leaderboard={leaderboard} onBack={() => setView('profile')} />}
+            </motion.div>
+          </AnimatePresence>
+        </motion.section>
       </main>
 
       <ToastHub toasts={toasts} removeToast={removeToast} />
@@ -272,41 +276,45 @@ function AuthCard({ onSubmit }) {
   </div>;
 }
 
-function ProfileCard({ user, dashboard, quizzes, onLaunch, onCreateQuiz, onEditQuiz }) {
-  const [newQuiz, setNewQuiz] = useState({ title: '', description: '', categoryNames: '' });
-
+function ProfileCard({ user, dashboard }) {
   return <div>
     <h2>Профиль</h2><p>{user?.displayName} ({user?.role})</p>
-    {user?.role === 'ORGANIZER' && <div className="stack">
-      <h3>Создать квиз</h3>
-      <form className="stack" onSubmit={(e) => {
-        e.preventDefault();
-        onCreateQuiz({
-          title: newQuiz.title,
-          description: newQuiz.description,
-          categoryNames: newQuiz.categoryNames.split(',').map((s) => s.trim()).filter(Boolean)
-        });
-      }}>
-        <input placeholder="Название квиза" value={newQuiz.title} onChange={(e) => setNewQuiz({ ...newQuiz, title: e.target.value })} required />
-        <input placeholder="Описание" value={newQuiz.description} onChange={(e) => setNewQuiz({ ...newQuiz, description: e.target.value })} />
-        <input placeholder="Категории через запятую" value={newQuiz.categoryNames} onChange={(e) => setNewQuiz({ ...newQuiz, categoryNames: e.target.value })} />
-        <button>Создать</button>
-      </form>
-
-      <h3>Мои квизы</h3>
-      {quizzes?.map((quiz) => (
-        <article key={quiz.id} className="tile">
-          <b>{quiz.title}</b>
-          <span>{quiz._count.questions} вопросов</span>
-          <div className="row-actions">
-            <button className="ghost" onClick={() => onEditQuiz(quiz.id)}>Редактировать</button>
-            <button onClick={() => onLaunch(quiz.id)}>Запустить</button>
-          </div>
-        </article>
-      ))}
-    </div>}
+    {user?.role === 'ORGANIZER' && <p>Перейдите во вкладку «Квизы», чтобы создавать, редактировать, публиковать и запускать квизы.</p>}
     {user?.role === 'PARTICIPANT' && <p>Используйте «Присоединиться», чтобы войти в активный квиз.</p>}
     {!dashboard && <p>Загрузка...</p>}
+  </div>;
+}
+
+function OrganizerQuizzesCard({ quizzes, onLaunch, onCreateQuiz, onEditQuiz }) {
+  const [newQuiz, setNewQuiz] = useState({ title: '', description: '', categoryNames: '' });
+
+  return <div className="stack">
+    <h2>Управление квизами</h2>
+    <form className="stack" onSubmit={(e) => {
+      e.preventDefault();
+      onCreateQuiz({
+        title: newQuiz.title,
+        description: newQuiz.description,
+        categoryNames: newQuiz.categoryNames.split(',').map((s) => s.trim()).filter(Boolean)
+      });
+    }}>
+      <input placeholder="Название квиза" value={newQuiz.title} onChange={(e) => setNewQuiz({ ...newQuiz, title: e.target.value })} required />
+      <input placeholder="Описание" value={newQuiz.description} onChange={(e) => setNewQuiz({ ...newQuiz, description: e.target.value })} />
+      <input placeholder="Категории через запятую" value={newQuiz.categoryNames} onChange={(e) => setNewQuiz({ ...newQuiz, categoryNames: e.target.value })} />
+      <button>Создать квиз</button>
+    </form>
+
+    <h3>Список квизов</h3>
+    {quizzes?.map((quiz) => (
+      <article key={quiz.id} className="tile">
+        <b>{quiz.title}</b>
+        <span>{quiz._count.questions} вопросов</span>
+        <div className="row-actions">
+          <button className="ghost" onClick={() => onEditQuiz(quiz.id)}>Редактировать</button>
+          <button onClick={() => onLaunch(quiz.id)}>Запустить</button>
+        </div>
+      </article>
+    ))}
   </div>;
 }
 
@@ -328,10 +336,16 @@ function CreateQuizCard({ quiz, onAddQuestion, onPublish, onBack }) {
   }
 
   const changeOption = (index, patch) => {
-    setQuestion((prev) => ({
-      ...prev,
-      options: prev.options.map((option, idx) => (idx === index ? { ...option, ...patch } : option))
-    }));
+    setQuestion((prev) => {
+      let nextOptions = prev.options.map((option, idx) => (idx === index ? { ...option, ...patch } : option));
+      if (!prev.allowMultiple && patch.isCorrect) {
+        nextOptions = nextOptions.map((option, idx) => ({ ...option, isCorrect: idx === index }));
+      }
+      return {
+        ...prev,
+        options: nextOptions
+      };
+    });
   };
 
   return <div className="stack">
@@ -351,8 +365,23 @@ function CreateQuizCard({ quiz, onAddQuestion, onPublish, onBack }) {
       </select>
       <input placeholder="Текст вопроса" value={question.prompt} onChange={(e) => setQuestion({ ...question, prompt: e.target.value })} required />
       {question.type === 'IMAGE' && <input placeholder="URL изображения" value={question.imageUrl} onChange={(e) => setQuestion({ ...question, imageUrl: e.target.value })} required />}
-      <label><input type="checkbox" checked={question.allowMultiple} onChange={(e) => setQuestion({ ...question, allowMultiple: e.target.checked })} /> Множественный выбор</label>
-      <input type="number" min="10" max="1000" value={question.points} onChange={(e) => setQuestion({ ...question, points: Number(e.target.value) })} />
+      <label><input type="checkbox" checked={question.allowMultiple} onChange={(e) => {
+        const allowMultiple = e.target.checked;
+        setQuestion((prev) => {
+          if (allowMultiple) {
+            return { ...prev, allowMultiple };
+          }
+          const firstCorrectIndex = prev.options.findIndex((option) => option.isCorrect);
+          return {
+            ...prev,
+            allowMultiple: false,
+            options: prev.options.map((option, index) => ({ ...option, isCorrect: firstCorrectIndex === -1 ? false : index === firstCorrectIndex }))
+          };
+        });
+      }} /> Множественный выбор</label>
+      <label>Очки за вопрос
+        <input type="number" min="10" max="1000" value={question.points} onChange={(e) => setQuestion({ ...question, points: Number(e.target.value) })} />
+      </label>
 
       <h4>Варианты ответа</h4>
       {question.options.map((option, idx) => (

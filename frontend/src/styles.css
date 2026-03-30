@@ -24,6 +24,7 @@ body, html, #root { margin: 0; height: 100%; font-family: Inter, system-ui, sans
 @keyframes wave { 0% { background-position: 0 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
 .header { position: relative; z-index: 2; margin: 24px auto 0; width: min(980px, calc(100vw - 40px)); background: var(--bg-secondary); border-radius: var(--radius-main); padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .header nav { display: flex; gap: 8px; }
+.header nav button[data-active='true'] { background: var(--accent); color: #fff; }
 .brand { font-weight: 700; }
 .timer { font-size: 28px; font-weight: 700; color: var(--accent); }
 .content { position: relative; z-index: 2; display: grid; place-items: center; min-height: calc(100vh - 120px); padding: 20px; }

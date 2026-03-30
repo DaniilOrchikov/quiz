@@ -154,6 +154,11 @@ quizRouter.post('/:quizId/questions', requireRole('ORGANIZER'), async (req, res)
     return res.status(400).json({ error: 'At least one correct option is required' });
   }
 
+  const correctOptionsCount = options.filter((option) => option.isCorrect).length;
+  if (!allowMultiple && correctOptionsCount !== 1) {
+    return res.status(400).json({ error: 'Single-choice question must contain exactly one correct option' });
+  }
+
   const quiz = await prisma.quiz.findUnique({
     where: { id: req.params.quizId },
     include: { _count: { select: { questions: true } } }
