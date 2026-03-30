@@ -1,0 +1,188 @@
+import express from 'express';
+import { QuestionType, QuizStatus } from '@prisma/client';
+import { prisma } from '../db.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
+
+export const quizRouter = express.Router();
+
+quizRouter.use(requireAuth);
+
+quizRouter.post('/', requireRole('ORGANIZER'), async (req, res) => {
+  const { title, description, defaultTime = 20, categoryNames = [] } = req.body;
+  if (!title) {
+    return res.status(400).json({ error: 'title is required' });
+  }
+
+  const quiz = await prisma.quiz.create({
+    data: {
+      title,
+      description,
+      defaultTime,
+      createdById: req.user.id,
+      categories: {
+        create: await Promise.all(
+          [...new Set(categoryNames)].map(async (name) => {
+            const category = await prisma.category.upsert({
+              where: { name },
+              create: { name },
+              update: {}
+            });
+            return { categoryId: category.id };
+          })
+        )
+      }
+    },
+    include: {
+      categories: { include: { category: true } },
+      questions: { include: { options: true }, orderBy: { orderIndex: 'asc' } }
+    }
+  });
+
+  return res.status(201).json(quiz);
+});
+
+quizRouter.get('/', async (req, res) => {
+  const where = req.user.role === 'ORGANIZER'
+    ? { createdById: req.user.id }
+    : { status: 'PUBLISHED' };
+
+  const quizzes = await prisma.quiz.findMany({
+    where,
+    include: {
+      categories: { include: { category: true } },
+      _count: { select: { questions: true, sessions: true } }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  return res.json(quizzes);
+});
+
+quizRouter.get('/:quizId', async (req, res) => {
+  const quiz = await prisma.quiz.findUnique({
+    where: { id: req.params.quizId },
+    include: {
+      categories: { include: { category: true } },
+      questions: { include: { options: true }, orderBy: { orderIndex: 'asc' } }
+    }
+  });
+
+  if (!quiz) {
+    return res.status(404).json({ error: 'Quiz not found' });
+  }
+
+  if (req.user.role === 'ORGANIZER' && quiz.createdById !== req.user.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  if (req.user.role !== 'ORGANIZER' && quiz.status !== 'PUBLISHED') {
+    return res.status(403).json({ error: 'Quiz is not published' });
+  }
+
+  return res.json(quiz);
+});
+
+quizRouter.patch('/:quizId', requireRole('ORGANIZER'), async (req, res) => {
+  const { title, description, defaultTime, status, categoryNames } = req.body;
+
+  const quiz = await prisma.quiz.findUnique({ where: { id: req.params.quizId } });
+  if (!quiz) {
+    return res.status(404).json({ error: 'Quiz not found' });
+  }
+
+  if (quiz.createdById !== req.user.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  if (status && !Object.values(QuizStatus).includes(status)) {
+    return res.status(400).json({ error: `status must be one of: ${Object.values(QuizStatus).join(', ')}` });
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (Array.isArray(categoryNames)) {
+      await tx.quizCategory.deleteMany({ where: { quizId: quiz.id } });
+
+      for (const name of [...new Set(categoryNames)]) {
+        const category = await tx.category.upsert({
+          where: { name },
+          create: { name },
+          update: {}
+        });
+        await tx.quizCategory.create({
+          data: {
+            quizId: quiz.id,
+            categoryId: category.id
+          }
+        });
+      }
+    }
+
+    return tx.quiz.update({
+      where: { id: quiz.id },
+      data: {
+        title: title ?? undefined,
+        description: description ?? undefined,
+        defaultTime: defaultTime ?? undefined,
+        status: status ?? undefined
+      },
+      include: {
+        categories: { include: { category: true } },
+        questions: { include: { options: true }, orderBy: { orderIndex: 'asc' } }
+      }
+    });
+  });
+
+  return res.json(updated);
+});
+
+quizRouter.post('/:quizId/questions', requireRole('ORGANIZER'), async (req, res) => {
+  const { type, prompt, imageUrl, allowMultiple = false, timeLimitSec, points = 100, options } = req.body;
+
+  if (!type || !Object.values(QuestionType).includes(type)) {
+    return res.status(400).json({ error: `type must be one of: ${Object.values(QuestionType).join(', ')}` });
+  }
+
+  if (!prompt) {
+    return res.status(400).json({ error: 'prompt is required' });
+  }
+
+  if (!Array.isArray(options) || options.length < 2) {
+    return res.status(400).json({ error: 'At least 2 answer options are required' });
+  }
+
+  if (!options.some((option) => option.isCorrect)) {
+    return res.status(400).json({ error: 'At least one correct option is required' });
+  }
+
+  const quiz = await prisma.quiz.findUnique({
+    where: { id: req.params.quizId },
+    include: { _count: { select: { questions: true } } }
+  });
+
+  if (!quiz) {
+    return res.status(404).json({ error: 'Quiz not found' });
+  }
+
+  if (quiz.createdById !== req.user.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const question = await prisma.question.create({
+    data: {
+      quizId: quiz.id,
+      type,
+      prompt,
+      imageUrl: imageUrl || null,
+      allowMultiple,
+      timeLimitSec: timeLimitSec ?? null,
+      points,
+      orderIndex: quiz._count.questions,
+      options: {
+        create: options.map((option) => ({ text: option.text, isCorrect: Boolean(option.isCorrect) }))
+      }
+    },
+    include: { options: true }
+  });
+
+  return res.status(201).json(question);
+});
