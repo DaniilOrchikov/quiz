@@ -43,8 +43,8 @@ quizRouter.post('/', requireRole('ORGANIZER'), async (req, res) => {
 
 quizRouter.get('/', async (req, res) => {
   const where = req.user.role === 'ORGANIZER'
-    ? { createdById: req.user.id }
-    : { status: 'PUBLISHED' };
+    ? { createdById: req.user.id, isDeleted: false }
+    : { status: 'PUBLISHED', isDeleted: false };
 
   const quizzes = await prisma.quiz.findMany({
     where,
@@ -68,6 +68,9 @@ quizRouter.get('/:quizId', async (req, res) => {
   });
 
   if (!quiz) {
+    return res.status(404).json({ error: 'Quiz not found' });
+  }
+  if (quiz.isDeleted) {
     return res.status(404).json({ error: 'Quiz not found' });
   }
 
@@ -133,6 +136,19 @@ quizRouter.patch('/:quizId', requireRole('ORGANIZER'), async (req, res) => {
   });
 
   return res.json(updated);
+});
+
+quizRouter.delete('/:quizId', requireRole('ORGANIZER'), async (req, res) => {
+  const quiz = await prisma.quiz.findUnique({ where: { id: req.params.quizId } });
+  if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+  if (quiz.createdById !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+  await prisma.quiz.update({
+    where: { id: quiz.id },
+    data: { isDeleted: true, status: 'DRAFT', title: `[Удален] ${quiz.title}` }
+  });
+
+  return res.json({ ok: true });
 });
 
 quizRouter.post('/:quizId/questions', requireRole('ORGANIZER'), async (req, res) => {

@@ -72,6 +72,11 @@ async function emitAnswerStats(io, sessionId, questionId) {
   return { answeredPlayers, totalPlayers, correctAnswers, wrongAnswers, correctPercent, wrongPercent };
 }
 
+async function emitParticipantCount(io, sessionId) {
+  const totalPlayers = await prisma.sessionParticipant.count({ where: { sessionId } });
+  io.to(roomName(sessionId)).emit('session:participant-count', { sessionId, totalPlayers });
+}
+
 async function advanceToNextQuestion(io, sessionId) {
   const session = await getSessionWithQuiz(sessionId);
   if (!session) return;
@@ -162,8 +167,20 @@ export function createSocketServer(httpServer) {
         });
 
         if (!session) throw new Error('Room not found');
+        if (session.status === SessionStatus.FINISHED) throw new Error('Квиз уже завершен');
 
         if (socket.data.user.role === 'PARTICIPANT') {
+          const activeOtherSession = await prisma.sessionParticipant.findFirst({
+            where: {
+              userId: socket.data.user.id,
+              session: {
+                id: { not: session.id },
+                status: { in: [SessionStatus.WAITING, SessionStatus.LIVE] }
+              }
+            }
+          });
+          if (activeOtherSession) throw new Error('Вы уже участвуете в другом активном квизе');
+
           const existingParticipant = await prisma.sessionParticipant.findUnique({
             where: { sessionId_userId: { sessionId: session.id, userId: socket.data.user.id } }
           });
@@ -205,6 +222,7 @@ export function createSocketServer(httpServer) {
         io.to(roomName(session.id)).emit('session:participant-joined', {
           user: { id: socket.data.user.id, displayName: socket.data.user.displayName }
         });
+        await emitParticipantCount(io, session.id);
       } catch (error) {
         ack({ ok: false, error: error.message });
       }
@@ -277,6 +295,46 @@ export function createSocketServer(httpServer) {
           clearSessionTimer(sessionId);
           await advanceToNextQuestion(io, sessionId);
         }
+      } catch (error) {
+        ack({ ok: false, error: error.message });
+      }
+    });
+
+    socket.on('session:leave', async ({ sessionId }, ack = () => {}) => {
+      try {
+        if (socket.data.user.role !== 'PARTICIPANT') throw new Error('Only participants can leave');
+        const participant = await prisma.sessionParticipant.findUnique({
+          where: { sessionId_userId: { sessionId, userId: socket.data.user.id } }
+        });
+        if (participant) {
+          await prisma.sessionParticipant.delete({ where: { id: participant.id } });
+        }
+        socket.leave(roomName(sessionId));
+        await emitParticipantCount(io, sessionId);
+        io.to(roomName(sessionId)).emit('session:participant-left', {
+          user: { id: socket.data.user.id, displayName: socket.data.user.displayName }
+        });
+        ack({ ok: true });
+      } catch (error) {
+        ack({ ok: false, error: error.message });
+      }
+    });
+
+    socket.on('session:cancel', async ({ sessionId }, ack = () => {}) => {
+      try {
+        const session = await prisma.quizSession.findUnique({ where: { id: sessionId } });
+        if (!session) throw new Error('Session not found');
+        if (session.createdById !== socket.data.user.id) throw new Error('Only organizer can cancel');
+        if (session.status !== SessionStatus.WAITING) throw new Error('Можно отменить только квиз в ожидании игроков');
+
+        await prisma.quizSession.update({
+          where: { id: session.id },
+          data: { status: SessionStatus.FINISHED, finishedAt: new Date(), currentQuestionId: null }
+        });
+        clearSessionTimer(session.id);
+        questionRuntime.delete(session.id);
+        io.to(roomName(session.id)).emit('session:cancelled', { sessionId: session.id });
+        ack({ ok: true });
       } catch (error) {
         ack({ ok: false, error: error.message });
       }

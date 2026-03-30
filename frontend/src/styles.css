@@ -29,7 +29,8 @@ body, html, #root { margin: 0; height: 100%; font-family: Inter, system-ui, sans
 .brand { font-weight: 700; }
 .timer { font-size: 28px; font-weight: 700; color: var(--accent); }
 .content { position: relative; z-index: 2; display: grid; place-items: center; min-height: calc(100vh - 120px); padding: 20px; overflow: hidden; }
-.card { width: var(--layout-width); max-height: min(82vh, 860px); overflow: auto; border-radius: var(--radius-main); background: var(--bg-secondary); padding: 28px; box-shadow: 0 12px 30px rgba(0,0,0,.15); transition: background-color .35s ease, color .35s ease; }
+.card { width: var(--layout-width); max-height: min(82vh, 860px); overflow: hidden; border-radius: var(--radius-main); background: var(--bg-secondary); box-shadow: 0 12px 30px rgba(0,0,0,.15); transition: background-color .35s ease, color .35s ease; }
+.card-scroll { max-height: min(82vh, 860px); overflow: auto; padding: 28px; }
 .stack { display: grid; gap: 10px; }
 input, select, button { border: 1px solid transparent; border-radius: var(--radius-sub); padding: 12px 14px; font: inherit; }
 input, select { background: var(--bg-main); color: var(--text); }

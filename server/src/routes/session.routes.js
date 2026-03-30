@@ -61,6 +61,25 @@ sessionRouter.post('/join', requireRole('PARTICIPANT'), async (req, res) => {
     return res.status(404).json({ error: 'Room not found' });
   }
 
+  if (session.status === SessionStatus.FINISHED) {
+    return res.status(400).json({ error: 'Квиз уже завершен' });
+  }
+
+  const activeOtherSession = await prisma.sessionParticipant.findFirst({
+    where: {
+      userId: req.user.id,
+      session: {
+        id: { not: session.id },
+        status: { in: [SessionStatus.WAITING, SessionStatus.LIVE] }
+      }
+    },
+    include: { session: true }
+  });
+
+  if (activeOtherSession) {
+    return res.status(400).json({ error: 'Вы уже участвуете в другом активном квизе' });
+  }
+
   const existingParticipant = await prisma.sessionParticipant.findUnique({
     where: {
       sessionId_userId: {
@@ -101,6 +120,35 @@ sessionRouter.post('/join', requireRole('PARTICIPANT'), async (req, res) => {
     },
     participant
   });
+});
+
+sessionRouter.post('/:sessionId/leave', requireRole('PARTICIPANT'), async (req, res) => {
+  const session = await prisma.quizSession.findUnique({ where: { id: req.params.sessionId } });
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+
+  const participant = await prisma.sessionParticipant.findUnique({
+    where: { sessionId_userId: { sessionId: session.id, userId: req.user.id } }
+  });
+
+  if (!participant) return res.status(404).json({ error: 'Participant not found in this session' });
+
+  await prisma.sessionParticipant.delete({ where: { id: participant.id } });
+  return res.json({ ok: true });
+});
+
+sessionRouter.post('/:sessionId/cancel', requireRole('ORGANIZER'), async (req, res) => {
+  const session = await prisma.quizSession.findUnique({ where: { id: req.params.sessionId } });
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (session.createdById !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+  if (session.status !== SessionStatus.WAITING) {
+    return res.status(400).json({ error: 'Можно отменить только квиз в ожидании игроков' });
+  }
+
+  await prisma.quizSession.update({
+    where: { id: session.id },
+    data: { status: SessionStatus.FINISHED, finishedAt: new Date(), currentQuestionId: null }
+  });
+  return res.json({ ok: true });
 });
 
 sessionRouter.get('/:sessionId/leaderboard', async (req, res) => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { io } from 'socket.io-client';
 import { Header } from './components/Header.jsx';
@@ -44,6 +44,7 @@ export function App() {
   const [leaderboard, setLeaderboard] = useState(stored.leaderboard || []);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [editingQuiz, setEditingQuiz] = useState(null);
+  const [participantCount, setParticipantCount] = useState(0);
   const [answerStats, setAnswerStats] = useState(stored.answerStats || {
     answeredPlayers: 0,
     totalPlayers: 0,
@@ -55,6 +56,8 @@ export function App() {
   const { toasts, pushToast, removeToast } = useToasts();
 
   const socketRef = useRef(null);
+  const cardContentRef = useRef(null);
+  const [cardHeight, setCardHeight] = useState(null);
 
   useEffect(() => {
     document.body.dataset.theme = theme;
@@ -105,12 +108,18 @@ export function App() {
     socket.on('session:answer-stats', (stats) => {
       setAnswerStats(stats);
     });
+    socket.on('session:participant-count', ({ totalPlayers }) => setParticipantCount(totalPlayers));
     socket.on('session:leaderboard-update', ({ leaderboard: rows }) => setLeaderboard(rows));
     socket.on('session:finished', ({ leaderboard: rows }) => {
       setLeaderboard(rows);
       setView('results');
       setSession(null);
       pushToast('Квиз завершен. Показан итоговый лидерборд.', 'info');
+    });
+    socket.on('session:cancelled', () => {
+      setSession(null);
+      setView('profile');
+      pushToast('Организатор отменил квиз. Вы возвращены на главный экран.', 'info');
     });
 
     socket.on('connect_error', (error) => {
@@ -169,6 +178,19 @@ export function App() {
       answerStats
     }));
   }, [view, session, currentQuestion, leaderboard, secondsLeft, answerStats]);
+
+  useLayoutEffect(() => {
+    if (!cardContentRef.current) return;
+    const calculate = () => setCardHeight(Math.min(cardContentRef.current.scrollHeight + 2, window.innerHeight * 0.82));
+    calculate();
+    const observer = new ResizeObserver(calculate);
+    observer.observe(cardContentRef.current);
+    window.addEventListener('resize', calculate);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', calculate);
+    };
+  }, [view, quizList, dashboard, currentQuestion, leaderboard, participantCount, answerStats, editingQuiz]);
 
   const onLogin = async (payload, isRegister) => {
     try {
@@ -273,6 +295,17 @@ export function App() {
     }
   };
 
+  const deleteQuiz = async (quizId) => {
+    try {
+      await request(`/api/quizzes/${quizId}`, 'DELETE', token);
+      await loadDashboard();
+      pushToast('Квиз удален из списка активных', 'success');
+      setView('quiz-list');
+    } catch (e) {
+      pushToast(e.message, 'error');
+    }
+  };
+
   const openQuizEditor = async (quizId) => {
     try {
       const fullQuiz = await request(`/api/quizzes/${quizId}`, 'GET', token);
@@ -284,6 +317,18 @@ export function App() {
   };
 
   const startQuiz = () => socketRef.current?.emit('session:start', { sessionId: session.id }, (ack) => !ack.ok && pushToast(ack.error, 'error'));
+  const cancelQuiz = () => socketRef.current?.emit('session:cancel', { sessionId: session.id }, (ack) => {
+    if (!ack.ok) return pushToast(ack.error, 'error');
+    setSession(null);
+    setView('profile');
+  });
+  const leaveQuiz = () => socketRef.current?.emit('session:leave', { sessionId: session.id }, (ack) => {
+    if (!ack.ok) return pushToast(ack.error, 'error');
+    setSession(null);
+    setCurrentQuestion(null);
+    setView('profile');
+    pushToast('Вы вышли из квиза', 'info');
+  });
   const submitAnswer = (optionIds) => socketRef.current?.emit('session:submit-answer', { sessionId: session.id, questionId: currentQuestion.id, optionIds }, (ack) => {
     if (!ack.ok) return pushToast(ack.error, 'error');
     pushToast('Ответ принят', 'success');
@@ -300,15 +345,17 @@ export function App() {
         secondsLeft={secondsLeft}
         activeQuiz={activeQuiz}
         waiting={view === 'waiting'}
-        activeView={view === 'create-quiz' ? 'quizzes' : view}
+        activeView={view === 'create-quiz' || view === 'quiz-create' || view === 'quiz-list' ? 'quizzes' : view}
         onNavigate={setView}
         onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
       />
 
       <main className="content">
-        <motion.section className="card" layout transition={{ layout: { duration: 0.35 } }}>
+        <motion.section className="card" animate={{ height: cardHeight || 'auto' }} transition={{ type: 'spring', stiffness: 120, damping: 22 }}>
           <AnimatePresence mode="wait">
             <motion.div
+              ref={cardContentRef}
+              className="card-scroll"
               key={view}
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
@@ -317,12 +364,14 @@ export function App() {
             >
               {view === 'auth' && <AuthCard onSubmit={onLogin} />}
               {view === 'profile' && <ProfileCard user={user} dashboard={dashboard} />}
-              {view === 'quizzes' && <OrganizerQuizzesCard quizzes={quizList} onLaunch={launchSession} onCreateQuiz={createQuiz} onEditQuiz={openQuizEditor} />}
+              {view === 'quizzes' && <QuizHubCard onOpenCreate={() => setView('quiz-create')} onOpenList={() => setView('quiz-list')} />}
+              {view === 'quiz-create' && <QuizCreateCard onCreateQuiz={createQuiz} onBack={() => setView('quizzes')} />}
+              {view === 'quiz-list' && <QuizListCard quizzes={quizList} onLaunch={launchSession} onEditQuiz={openQuizEditor} onDeleteQuiz={deleteQuiz} onBack={() => setView('quizzes')} />}
               {view === 'join' && <JoinCard onJoin={joinByCode} />}
               {view === 'history' && <HistoryCard dashboard={dashboard} role={user?.role} />}
-              {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onAddQuestion={addQuestionToQuiz} onUpdateQuestion={updateQuestionInQuiz} onPublish={publishQuiz} onBack={() => setView('quizzes')} />}
-              {view === 'waiting' && <WaitingCard session={session} user={user} onStart={startQuiz} />}
-              {view === 'quiz' && <QuestionCard question={currentQuestion} onSubmit={submitAnswer} user={user} answerStats={answerStats} />}
+              {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onAddQuestion={addQuestionToQuiz} onUpdateQuestion={updateQuestionInQuiz} onPublish={publishQuiz} onBack={() => setView('quiz-list')} />}
+              {view === 'waiting' && <WaitingCard session={session} user={user} onStart={startQuiz} onCancel={cancelQuiz} onLeave={leaveQuiz} participantCount={participantCount} />}
+              {view === 'quiz' && <QuestionCard question={currentQuestion} onSubmit={submitAnswer} onLeave={leaveQuiz} user={user} answerStats={answerStats} />}
               {view === 'results' && <ResultsCard leaderboard={leaderboard} onBack={() => setView('profile')} />}
             </motion.div>
           </AnimatePresence>
@@ -359,11 +408,19 @@ function ProfileCard({ user, dashboard }) {
   </div>;
 }
 
-function OrganizerQuizzesCard({ quizzes, onLaunch, onCreateQuiz, onEditQuiz }) {
+function QuizHubCard({ onOpenCreate, onOpenList }) {
+  return <div className="stack">
+    <h2>Квизы</h2>
+    <button onClick={onOpenCreate}>Создать квиз</button>
+    <button className="ghost" onClick={onOpenList}>Созданные квизы</button>
+  </div>;
+}
+
+function QuizCreateCard({ onCreateQuiz, onBack }) {
   const [newQuiz, setNewQuiz] = useState({ title: '', description: '', categoryNames: '' });
 
   return <div className="stack">
-    <h2>Управление квизами</h2>
+    <h2>Создание квиза</h2>
     <form className="stack" onSubmit={(e) => {
       e.preventDefault();
       onCreateQuiz({
@@ -377,18 +434,25 @@ function OrganizerQuizzesCard({ quizzes, onLaunch, onCreateQuiz, onEditQuiz }) {
       <input placeholder="Категории через запятую" value={newQuiz.categoryNames} onChange={(e) => setNewQuiz({ ...newQuiz, categoryNames: e.target.value })} />
       <button>Создать квиз</button>
     </form>
+    <button className="ghost" onClick={onBack}>Назад</button>
+  </div>;
+}
 
-    <h3>Список квизов</h3>
+function QuizListCard({ quizzes, onLaunch, onEditQuiz, onDeleteQuiz, onBack }) {
+  return <div className="stack">
+    <h2>Созданные квизы</h2>
     {quizzes?.map((quiz) => (
       <article key={quiz.id} className="tile">
         <b>{quiz.title}</b>
         <span>{quiz._count.questions} вопросов</span>
         <div className="row-actions">
           <button className="ghost" onClick={() => onEditQuiz(quiz.id)}>Редактировать</button>
+          <button className="ghost" onClick={() => onDeleteQuiz(quiz.id)}>Удалить</button>
           <button onClick={() => onLaunch(quiz.id)}>Запустить</button>
         </div>
       </article>
     ))}
+    <button className="ghost" onClick={onBack}>Назад</button>
   </div>;
 }
 
@@ -529,13 +593,19 @@ function HistoryCard({ dashboard, role }) {
   return <div><h2>История</h2>{role === 'ORGANIZER' ? dashboard?.quizzes?.map((q) => <article className="tile" key={q.id}>{q.title}<span>Сессий: {q._count.sessions}</span></article>) : dashboard?.participations?.map((p) => <article className="tile" key={p.id}>{p.session.quiz.title}<span>{p.totalScore} очков</span></article>)}</div>;
 }
 
-function WaitingCard({ session, user, onStart }) {
-  return <div><h2>Ожидание начала</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>{user?.role === 'ORGANIZER' && <button onClick={onStart}>Начать квиз</button>}</div>;
+function WaitingCard({ session, user, onStart, onCancel, onLeave, participantCount }) {
+  return <div className="stack"><h2>Ожидание начала</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>
+    {user?.role === 'ORGANIZER' && <p>Подключилось игроков: <b>{participantCount}</b></p>}
+    {user?.role === 'ORGANIZER' && <div className="row-actions"><button onClick={onStart}>Начать квиз</button><button className="ghost" onClick={onCancel}>Отменить квиз</button></div>}
+    {user?.role === 'PARTICIPANT' && <button className="ghost" onClick={onLeave}>Выйти из квиза</button>}
+  </div>;
 }
 
-function QuestionCard({ question, onSubmit, user, answerStats }) {
+function QuestionCard({ question, onSubmit, onLeave, user, answerStats }) {
   const [selected, setSelected] = useState([]);
+  const [submitted, setSubmitted] = useState(false);
   useEffect(() => setSelected([]), [question?.id]);
+  useEffect(() => setSubmitted(false), [question?.id]);
   if (!question) return <p>Ожидаем вопрос...</p>;
   const toggle = (id) => setSelected((prev) => question.allowMultiple ? (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]) : [id]);
   return <div><h2>{question.prompt}</h2>{question.imageUrl && <img className="preview" src={question.imageUrl} alt="Вопрос"/>}
@@ -548,8 +618,11 @@ function QuestionCard({ question, onSubmit, user, answerStats }) {
     )}
     {user?.role === 'PARTICIPANT' && (
       <>
-        <div className="stack">{question.options.map((o) => <button key={o.id} className={`option ${selected.includes(o.id) ? 'active' : ''}`} onClick={() => toggle(o.id)}>{o.text}</button>)}</div>
-        <button onClick={() => onSubmit(selected)} disabled={!selected.length}>Ответить</button>
+        {!submitted && <div className="stack">{question.options.map((o) => <button key={o.id} className={`option ${selected.includes(o.id) ? 'active' : ''}`} onClick={() => toggle(o.id)}>{o.text}</button>)}</div>}
+        {!submitted
+          ? <button onClick={() => { onSubmit(selected); setSubmitted(true); }} disabled={!selected.length}>Ответить</button>
+          : <p>Ответ отправлен. Ответили: <b>{answerStats.answeredPlayers}</b> / {answerStats.totalPlayers}</p>}
+        <button className="ghost" onClick={onLeave}>Выйти из квиза</button>
       </>
     )}
   </div>;
