@@ -42,9 +42,16 @@ export function App() {
   const [session, setSession] = useState(stored.session || null);
   const [currentQuestion, setCurrentQuestion] = useState(stored.currentQuestion || null);
   const [leaderboard, setLeaderboard] = useState(stored.leaderboard || []);
-  const [secondsLeft, setSecondsLeft] = useState(stored.secondsLeft || 0);
+  const [secondsLeft, setSecondsLeft] = useState(0);
   const [editingQuiz, setEditingQuiz] = useState(null);
-  const [answerStats, setAnswerStats] = useState(stored.answerStats || { answeredPlayers: 0, totalPlayers: 0 });
+  const [answerStats, setAnswerStats] = useState(stored.answerStats || {
+    answeredPlayers: 0,
+    totalPlayers: 0,
+    correctAnswers: 0,
+    wrongAnswers: 0,
+    correctPercent: 0,
+    wrongPercent: 0
+  });
   const { toasts, pushToast, removeToast } = useToasts();
 
   const socketRef = useRef(null);
@@ -84,22 +91,25 @@ export function App() {
 
     socketRef.current = socket;
 
-    socket.on('session:started', ({ question }) => {
+    socket.on('session:started', ({ question, durationSec, startedAt }) => {
       setView('quiz');
       setCurrentQuestion(question);
-      setSecondsLeft(question?.timeLimitSec || 20);
+      const passed = Math.floor((Date.now() - startedAt) / 1000);
+      setSecondsLeft(Math.max(0, (durationSec || question?.timeLimitSec || 20) - passed));
     });
-    socket.on('session:question', ({ question, durationSec }) => {
+    socket.on('session:question', ({ question, durationSec, startedAt }) => {
       setCurrentQuestion(question);
-      setSecondsLeft(durationSec || question?.timeLimitSec || 20);
+      const passed = Math.floor((Date.now() - startedAt) / 1000);
+      setSecondsLeft(Math.max(0, (durationSec || question?.timeLimitSec || 20) - passed));
     });
-    socket.on('session:answer-stats', ({ answeredPlayers, totalPlayers }) => {
-      setAnswerStats({ answeredPlayers, totalPlayers });
+    socket.on('session:answer-stats', (stats) => {
+      setAnswerStats(stats);
     });
     socket.on('session:leaderboard-update', ({ leaderboard: rows }) => setLeaderboard(rows));
     socket.on('session:finished', ({ leaderboard: rows }) => {
       setLeaderboard(rows);
       setView('results');
+      setSession(null);
       pushToast('Квиз завершен. Показан итоговый лидерборд.', 'info');
     });
 
@@ -133,7 +143,7 @@ export function App() {
         if (ack.session.currentQuestion) {
           setCurrentQuestion(ack.session.currentQuestion);
           setView('quiz');
-          setSecondsLeft(ack.session.currentQuestion.timeLimitSec || 20);
+          setSecondsLeft(ack.session.remainingSec || ack.session.currentQuestion.timeLimitSec || 20);
         } else if (ack.session.status === 'WAITING') {
           setView('waiting');
         }
@@ -529,9 +539,19 @@ function QuestionCard({ question, onSubmit, user, answerStats }) {
   if (!question) return <p>Ожидаем вопрос...</p>;
   const toggle = (id) => setSelected((prev) => question.allowMultiple ? (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]) : [id]);
   return <div><h2>{question.prompt}</h2>{question.imageUrl && <img className="preview" src={question.imageUrl} alt="Вопрос"/>}
-    {user?.role === 'ORGANIZER' && <p>Ответили: <b>{answerStats.answeredPlayers}</b> / {answerStats.totalPlayers}</p>}
-    <div className="stack">{question.options.map((o) => <button key={o.id} className={`option ${selected.includes(o.id) ? 'active' : ''}`} onClick={() => toggle(o.id)}>{o.text}</button>)}</div>
-    {user?.role === 'PARTICIPANT' && <button onClick={() => onSubmit(selected)} disabled={!selected.length}>Ответить</button>}
+    {user?.role === 'ORGANIZER' && (
+      <div className="stack">
+        <p>Ответили: <b>{answerStats.answeredPlayers}</b> / {answerStats.totalPlayers}</p>
+        <p>Верно: <b>{answerStats.correctPercent}%</b> ({answerStats.correctAnswers})</p>
+        <p>Неверно: <b>{answerStats.wrongPercent}%</b> ({answerStats.wrongAnswers})</p>
+      </div>
+    )}
+    {user?.role === 'PARTICIPANT' && (
+      <>
+        <div className="stack">{question.options.map((o) => <button key={o.id} className={`option ${selected.includes(o.id) ? 'active' : ''}`} onClick={() => toggle(o.id)}>{o.text}</button>)}</div>
+        <button onClick={() => onSubmit(selected)} disabled={!selected.length}>Ответить</button>
+      </>
+    )}
   </div>;
 }
 

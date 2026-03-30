@@ -7,6 +7,7 @@ import { assertSessionLive, evaluateAnswer, getLeaderboard } from './services/se
 
 const roomName = (sessionId) => `session:${sessionId}`;
 const sessionTimers = new Map();
+const questionRuntime = new Map();
 
 async function getSessionWithQuiz(sessionId) {
   return prisma.quizSession.findUnique({
@@ -46,19 +47,29 @@ function clearSessionTimer(sessionId) {
 }
 
 async function emitAnswerStats(io, sessionId, questionId) {
-  const [totalPlayers, answeredPlayers] = await Promise.all([
+  const [totalPlayers, answeredPlayers, answers] = await Promise.all([
     prisma.sessionParticipant.count({ where: { sessionId } }),
-    prisma.answer.count({ where: { sessionId, questionId } })
+    prisma.answer.count({ where: { sessionId, questionId } }),
+    prisma.answer.findMany({ where: { sessionId, questionId }, select: { isCorrect: true } })
   ]);
+
+  const correctAnswers = answers.filter((answer) => answer.isCorrect).length;
+  const wrongAnswers = answeredPlayers - correctAnswers;
+  const correctPercent = answeredPlayers ? Math.round((correctAnswers / answeredPlayers) * 100) : 0;
+  const wrongPercent = answeredPlayers ? Math.round((wrongAnswers / answeredPlayers) * 100) : 0;
 
   io.to(roomName(sessionId)).emit('session:answer-stats', {
     sessionId,
     questionId,
     answeredPlayers,
-    totalPlayers
+    totalPlayers,
+    correctAnswers,
+    wrongAnswers,
+    correctPercent,
+    wrongPercent
   });
 
-  return { answeredPlayers, totalPlayers };
+  return { answeredPlayers, totalPlayers, correctAnswers, wrongAnswers, correctPercent, wrongPercent };
 }
 
 async function advanceToNextQuestion(io, sessionId) {
@@ -70,6 +81,7 @@ async function advanceToNextQuestion(io, sessionId) {
 
   if (!nextQuestion) {
     clearSessionTimer(session.id);
+    questionRuntime.delete(session.id);
     const leaderboard = await getLeaderboard(session.id);
     await prisma.quizSession.update({
       where: { id: session.id },
@@ -86,10 +98,13 @@ async function advanceToNextQuestion(io, sessionId) {
   });
 
   const safeQuestion = getSafeQuestion(nextQuestion, session.quiz.defaultTime);
+  const startedAt = Date.now();
+  questionRuntime.set(session.id, { questionId: nextQuestion.id, startedAt, durationSec: safeQuestion.timeLimitSec });
   io.to(roomName(session.id)).emit('session:question', {
     sessionId: session.id,
     question: safeQuestion,
-    durationSec: safeQuestion.timeLimitSec
+    durationSec: safeQuestion.timeLimitSec,
+    startedAt
   });
 
   clearSessionTimer(session.id);
@@ -170,6 +185,10 @@ export function createSocketServer(httpServer) {
         const currentQuestion = session.currentQuestionId
           ? getSafeQuestion(session.quiz.questions.find((q) => q.id === session.currentQuestionId), session.quiz.defaultTime)
           : null;
+        const runtime = questionRuntime.get(session.id);
+        const remainingSec = runtime && runtime.questionId === session.currentQuestionId
+          ? Math.max(0, Math.ceil((runtime.durationSec * 1000 - (Date.now() - runtime.startedAt)) / 1000))
+          : currentQuestion?.timeLimitSec || 0;
 
         ack({
           ok: true,
@@ -178,7 +197,8 @@ export function createSocketServer(httpServer) {
             roomCode: session.roomCode,
             status: session.status,
             quiz: { id: session.quiz.id, title: session.quiz.title, questionCount: session.quiz.questions.length },
-            currentQuestion
+            currentQuestion,
+            remainingSec
           }
         });
 
@@ -205,11 +225,14 @@ export function createSocketServer(httpServer) {
         });
 
         const safeQuestion = getSafeQuestion(firstQuestion, session.quiz.defaultTime);
+        const startedAt = Date.now();
+        questionRuntime.set(session.id, { questionId: firstQuestion.id, startedAt, durationSec: safeQuestion.timeLimitSec });
         io.to(roomName(session.id)).emit('session:started', {
           sessionId: session.id,
           status: updated.status,
           question: safeQuestion,
-          durationSec: safeQuestion.timeLimitSec
+          durationSec: safeQuestion.timeLimitSec,
+          startedAt
         });
 
         await emitAnswerStats(io, session.id, firstQuestion.id);
