@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { io } from 'socket.io-client';
 import { Header } from './components/Header.jsx';
@@ -35,7 +35,7 @@ export function App() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const { toasts, pushToast, removeToast } = useToasts();
 
-  const socket = useMemo(() => (token ? io(WS_URL, { auth: { token } }) : null), [token]);
+  const socketRef = useRef(null);
 
   useEffect(() => {
     document.body.dataset.theme = theme;
@@ -57,7 +57,21 @@ export function App() {
   }, [token]);
 
   useEffect(() => {
-    if (!socket) return undefined;
+    if (!token) {
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+      return undefined;
+    }
+
+    const socket = io(WS_URL, {
+      auth: { token },
+      transports: ['websocket'],
+      autoConnect: true,
+      reconnectionAttempts: 5
+    });
+
+    socketRef.current = socket;
+
     socket.on('session:started', ({ question }) => {
       setView('quiz');
       setCurrentQuestion(question);
@@ -73,8 +87,18 @@ export function App() {
       setView('results');
       pushToast('Квиз завершен. Показан итоговый лидерборд.', 'info');
     });
-    return () => socket.disconnect();
-  }, [socket, pushToast]);
+
+    socket.on('connect_error', (error) => {
+      pushToast(`Ошибка WebSocket: ${error.message}`, 'error');
+    });
+
+    return () => {
+      socket.disconnect();
+      if (socketRef.current === socket) {
+        socketRef.current = null;
+      }
+    };
+  }, [token, pushToast]);
 
   useEffect(() => {
     if (view !== 'quiz' || !secondsLeft) return;
@@ -116,7 +140,7 @@ export function App() {
       const data = await request('/api/sessions/join', 'POST', token, { roomCode });
       setSession(data.session);
       setView('waiting');
-      socket?.emit('session:join-room', { roomCode }, (ack) => {
+      socketRef.current?.emit('session:join-room', { roomCode }, (ack) => {
         if (!ack.ok) pushToast(ack.error, 'error');
       });
       pushToast('Подключение к комнате выполнено', 'success');
@@ -130,16 +154,16 @@ export function App() {
       const created = await request(`/api/sessions/launch/${quizId}`, 'POST', token);
       setSession(created);
       setView('waiting');
-      socket?.emit('session:join-room', { roomCode: created.roomCode });
+      socketRef.current?.emit('session:join-room', { roomCode: created.roomCode });
       pushToast(`Сессия запущена. Код комнаты: ${created.roomCode}`, 'success');
     } catch (e) {
       pushToast(e.message, 'error');
     }
   };
 
-  const startQuiz = () => socket?.emit('session:start', { sessionId: session.id }, (ack) => !ack.ok && pushToast(ack.error, 'error'));
-  const nextQuestion = () => socket?.emit('session:next-question', { sessionId: session.id }, (ack) => !ack.ok && pushToast(ack.error, 'error'));
-  const submitAnswer = (optionIds) => socket?.emit('session:submit-answer', { sessionId: session.id, questionId: currentQuestion.id, optionIds }, (ack) => {
+  const startQuiz = () => socketRef.current?.emit('session:start', { sessionId: session.id }, (ack) => !ack.ok && pushToast(ack.error, 'error'));
+  const nextQuestion = () => socketRef.current?.emit('session:next-question', { sessionId: session.id }, (ack) => !ack.ok && pushToast(ack.error, 'error'));
+  const submitAnswer = (optionIds) => socketRef.current?.emit('session:submit-answer', { sessionId: session.id, questionId: currentQuestion.id, optionIds }, (ack) => {
     if (!ack.ok) return pushToast(ack.error, 'error');
     pushToast(ack.isCorrect ? `Верно (+${ack.earnedPoints})` : 'Неверно', ack.isCorrect ? 'success' : 'error');
   });
