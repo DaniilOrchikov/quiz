@@ -4,6 +4,7 @@ import { prisma } from '../db.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 
 export const quizRouter = express.Router();
+const DELETED_PREFIX = '[Удален] ';
 
 quizRouter.use(requireAuth);
 
@@ -43,8 +44,8 @@ quizRouter.post('/', requireRole('ORGANIZER'), async (req, res) => {
 
 quizRouter.get('/', async (req, res) => {
   const where = req.user.role === 'ORGANIZER'
-    ? { createdById: req.user.id, isDeleted: false }
-    : { status: 'PUBLISHED', isDeleted: false };
+    ? { createdById: req.user.id, NOT: { title: { startsWith: DELETED_PREFIX } } }
+    : { status: 'PUBLISHED', NOT: { title: { startsWith: DELETED_PREFIX } } };
 
   const quizzes = await prisma.quiz.findMany({
     where,
@@ -70,7 +71,7 @@ quizRouter.get('/:quizId', async (req, res) => {
   if (!quiz) {
     return res.status(404).json({ error: 'Quiz not found' });
   }
-  if (quiz.isDeleted) {
+  if (quiz.title.startsWith(DELETED_PREFIX)) {
     return res.status(404).json({ error: 'Quiz not found' });
   }
 
@@ -145,7 +146,10 @@ quizRouter.delete('/:quizId', requireRole('ORGANIZER'), async (req, res) => {
 
   await prisma.quiz.update({
     where: { id: quiz.id },
-    data: { isDeleted: true, status: 'DRAFT', title: `[Удален] ${quiz.title}` }
+    data: {
+      status: 'DRAFT',
+      title: quiz.title.startsWith(DELETED_PREFIX) ? quiz.title : `${DELETED_PREFIX}${quiz.title}`
+    }
   });
 
   return res.json({ ok: true });
