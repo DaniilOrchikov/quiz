@@ -191,3 +191,54 @@ quizRouter.post('/:quizId/questions', requireRole('ORGANIZER'), async (req, res)
 
   return res.status(201).json(question);
 });
+
+quizRouter.patch('/:quizId/questions/:questionId', requireRole('ORGANIZER'), async (req, res) => {
+  const { prompt, imageUrl, allowMultiple, timeLimitSec, points, options } = req.body;
+
+  const question = await prisma.question.findUnique({
+    where: { id: req.params.questionId },
+    include: { quiz: true, options: true }
+  });
+
+  if (!question || question.quizId !== req.params.quizId) {
+    return res.status(404).json({ error: 'Question not found' });
+  }
+
+  if (question.quiz.createdById !== req.user.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  if (Array.isArray(options)) {
+    if (options.length < 2) return res.status(400).json({ error: 'At least 2 options are required' });
+    if (!options.some((option) => option.isCorrect)) return res.status(400).json({ error: 'At least one correct option is required' });
+
+    const nextAllowMultiple = allowMultiple ?? question.allowMultiple;
+    const correctOptionsCount = options.filter((option) => option.isCorrect).length;
+    if (!nextAllowMultiple && correctOptionsCount !== 1) {
+      return res.status(400).json({ error: 'Single-choice question must contain exactly one correct option' });
+    }
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (Array.isArray(options)) {
+      await tx.option.deleteMany({ where: { questionId: question.id } });
+    }
+
+    return tx.question.update({
+      where: { id: question.id },
+      data: {
+        prompt: prompt ?? undefined,
+        imageUrl: imageUrl ?? undefined,
+        allowMultiple: allowMultiple ?? undefined,
+        timeLimitSec: timeLimitSec ?? undefined,
+        points: points ?? undefined,
+        options: Array.isArray(options)
+          ? { create: options.map((option) => ({ text: option.text, isCorrect: Boolean(option.isCorrect) })) }
+          : undefined
+      },
+      include: { options: true }
+    });
+  });
+
+  return res.json(updated);
+});

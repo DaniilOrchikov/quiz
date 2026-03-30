@@ -7,6 +7,15 @@ import { GradientBackground } from './components/GradientBackground.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const WS_URL = import.meta.env.VITE_WS_URL || API_URL;
+const STORAGE_KEY = 'quiz_app_state_v1';
+
+function readStoredState() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
 
 async function request(path, method = 'GET', token, body) {
   const response = await fetch(`${API_URL}${path}`, {
@@ -23,17 +32,19 @@ async function request(path, method = 'GET', token, body) {
 }
 
 export function App() {
+  const stored = readStoredState();
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [user, setUser] = useState(null);
-  const [view, setView] = useState('auth');
+  const [view, setView] = useState(stored.view || 'auth');
   const [dashboard, setDashboard] = useState(null);
   const [quizList, setQuizList] = useState([]);
-  const [session, setSession] = useState(null);
-  const [currentQuestion, setCurrentQuestion] = useState(null);
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [session, setSession] = useState(stored.session || null);
+  const [currentQuestion, setCurrentQuestion] = useState(stored.currentQuestion || null);
+  const [leaderboard, setLeaderboard] = useState(stored.leaderboard || []);
+  const [secondsLeft, setSecondsLeft] = useState(stored.secondsLeft || 0);
   const [editingQuiz, setEditingQuiz] = useState(null);
+  const [answerStats, setAnswerStats] = useState(stored.answerStats || { answeredPlayers: 0, totalPlayers: 0 });
   const { toasts, pushToast, removeToast } = useToasts();
 
   const socketRef = useRef(null);
@@ -49,7 +60,7 @@ export function App() {
     request('/api/auth/me', 'GET', token)
       .then(({ user: me }) => {
         setUser(me);
-        setView('profile');
+        setView((prev) => (prev === 'auth' ? 'profile' : prev));
       })
       .catch(() => {
         setToken(null);
@@ -78,9 +89,12 @@ export function App() {
       setCurrentQuestion(question);
       setSecondsLeft(question?.timeLimitSec || 20);
     });
-    socket.on('session:question', ({ question }) => {
+    socket.on('session:question', ({ question, durationSec }) => {
       setCurrentQuestion(question);
-      setSecondsLeft(question?.timeLimitSec || 20);
+      setSecondsLeft(durationSec || question?.timeLimitSec || 20);
+    });
+    socket.on('session:answer-stats', ({ answeredPlayers, totalPlayers }) => {
+      setAnswerStats({ answeredPlayers, totalPlayers });
     });
     socket.on('session:leaderboard-update', ({ leaderboard: rows }) => setLeaderboard(rows));
     socket.on('session:finished', ({ leaderboard: rows }) => {
@@ -106,6 +120,45 @@ export function App() {
     const timer = setInterval(() => setSecondsLeft((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => clearInterval(timer);
   }, [view, secondsLeft]);
+
+  useEffect(() => {
+    if (!token || !session?.roomCode) return;
+    const socket = socketRef.current;
+    if (!socket) return;
+
+    const joinCurrentRoom = () => {
+      socket.emit('session:join-room', { roomCode: session.roomCode }, (ack) => {
+        if (!ack?.ok) return;
+        setSession((prev) => ({ ...prev, ...ack.session }));
+        if (ack.session.currentQuestion) {
+          setCurrentQuestion(ack.session.currentQuestion);
+          setView('quiz');
+          setSecondsLeft(ack.session.currentQuestion.timeLimitSec || 20);
+        } else if (ack.session.status === 'WAITING') {
+          setView('waiting');
+        }
+      });
+    };
+
+    if (socket.connected) {
+      joinCurrentRoom();
+      return undefined;
+    }
+
+    socket.once('connect', joinCurrentRoom);
+    return () => socket.off('connect', joinCurrentRoom);
+  }, [token, session?.roomCode]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      view,
+      session,
+      currentQuestion,
+      leaderboard,
+      secondsLeft,
+      answerStats
+    }));
+  }, [view, session, currentQuestion, leaderboard, secondsLeft, answerStats]);
 
   const onLogin = async (payload, isRegister) => {
     try {
@@ -186,6 +239,18 @@ export function App() {
     }
   };
 
+  const updateQuestionInQuiz = async (quizId, questionId, payload) => {
+    try {
+      await request(`/api/quizzes/${quizId}/questions/${questionId}`, 'PATCH', token, payload);
+      const quiz = await request(`/api/quizzes/${quizId}`, 'GET', token);
+      setEditingQuiz(quiz);
+      await loadDashboard();
+      pushToast('Вопрос обновлен', 'success');
+    } catch (e) {
+      pushToast(e.message, 'error');
+    }
+  };
+
   const publishQuiz = async (quizId) => {
     try {
       const updated = await request(`/api/quizzes/${quizId}`, 'PATCH', token, { status: 'PUBLISHED' });
@@ -209,10 +274,9 @@ export function App() {
   };
 
   const startQuiz = () => socketRef.current?.emit('session:start', { sessionId: session.id }, (ack) => !ack.ok && pushToast(ack.error, 'error'));
-  const nextQuestion = () => socketRef.current?.emit('session:next-question', { sessionId: session.id }, (ack) => !ack.ok && pushToast(ack.error, 'error'));
   const submitAnswer = (optionIds) => socketRef.current?.emit('session:submit-answer', { sessionId: session.id, questionId: currentQuestion.id, optionIds }, (ack) => {
     if (!ack.ok) return pushToast(ack.error, 'error');
-    pushToast(ack.isCorrect ? `Верно (+${ack.earnedPoints})` : 'Неверно', ack.isCorrect ? 'success' : 'error');
+    pushToast('Ответ принят', 'success');
   });
 
   const activeQuiz = view === 'quiz';
@@ -246,9 +310,9 @@ export function App() {
               {view === 'quizzes' && <OrganizerQuizzesCard quizzes={quizList} onLaunch={launchSession} onCreateQuiz={createQuiz} onEditQuiz={openQuizEditor} />}
               {view === 'join' && <JoinCard onJoin={joinByCode} />}
               {view === 'history' && <HistoryCard dashboard={dashboard} role={user?.role} />}
-              {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onAddQuestion={addQuestionToQuiz} onPublish={publishQuiz} onBack={() => setView('quizzes')} />}
+              {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onAddQuestion={addQuestionToQuiz} onUpdateQuestion={updateQuestionInQuiz} onPublish={publishQuiz} onBack={() => setView('quizzes')} />}
               {view === 'waiting' && <WaitingCard session={session} user={user} onStart={startQuiz} />}
-              {view === 'quiz' && <QuestionCard question={currentQuestion} onSubmit={submitAnswer} user={user} onNext={nextQuestion} />}
+              {view === 'quiz' && <QuestionCard question={currentQuestion} onSubmit={submitAnswer} user={user} answerStats={answerStats} />}
               {view === 'results' && <ResultsCard leaderboard={leaderboard} onBack={() => setView('profile')} />}
             </motion.div>
           </AnimatePresence>
@@ -318,18 +382,20 @@ function OrganizerQuizzesCard({ quizzes, onLaunch, onCreateQuiz, onEditQuiz }) {
   </div>;
 }
 
-function CreateQuizCard({ quiz, onAddQuestion, onPublish, onBack }) {
+function CreateQuizCard({ quiz, onAddQuestion, onUpdateQuestion, onPublish, onBack }) {
   const [question, setQuestion] = useState({
     type: 'TEXT',
     prompt: '',
     imageUrl: '',
     allowMultiple: false,
     points: 100,
+    timeLimitSec: 20,
     options: [
       { text: '', isCorrect: false },
       { text: '', isCorrect: false }
     ]
   });
+  const [editingQuestionId, setEditingQuestionId] = useState(null);
 
   if (!quiz) {
     return <div><h2>Редактор квиза</h2><p>Сначала создайте квиз в профиле.</p><button onClick={onBack}>Назад</button></div>;
@@ -354,10 +420,30 @@ function CreateQuizCard({ quiz, onAddQuestion, onPublish, onBack }) {
 
     <form className="stack" onSubmit={(e) => {
       e.preventDefault();
-      onAddQuestion(quiz.id, {
+      const payload = {
         ...question,
         options: question.options.filter((option) => option.text.trim())
+      };
+
+      if (editingQuestionId) {
+        onUpdateQuestion(quiz.id, editingQuestionId, payload);
+      } else {
+        onAddQuestion(quiz.id, payload);
+      }
+
+      setQuestion({
+        type: 'TEXT',
+        prompt: '',
+        imageUrl: '',
+        allowMultiple: false,
+        points: 100,
+        timeLimitSec: 20,
+        options: [
+          { text: '', isCorrect: false },
+          { text: '', isCorrect: false }
+        ]
       });
+      setEditingQuestionId(null);
     }}>
       <select value={question.type} onChange={(e) => setQuestion({ ...question, type: e.target.value })}>
         <option value="TEXT">Текстовый вопрос</option>
@@ -382,6 +468,9 @@ function CreateQuizCard({ quiz, onAddQuestion, onPublish, onBack }) {
       <label>Очки за вопрос
         <input type="number" min="10" max="1000" value={question.points} onChange={(e) => setQuestion({ ...question, points: Number(e.target.value) })} />
       </label>
+      <label>Время на вопрос (секунды)
+        <input type="number" min="5" max="180" value={question.timeLimitSec} onChange={(e) => setQuestion({ ...question, timeLimitSec: Number(e.target.value) })} />
+      </label>
 
       <h4>Варианты ответа</h4>
       {question.options.map((option, idx) => (
@@ -392,12 +481,26 @@ function CreateQuizCard({ quiz, onAddQuestion, onPublish, onBack }) {
       ))}
       <button type="button" className="ghost" onClick={() => setQuestion((prev) => ({ ...prev, options: [...prev.options, { text: '', isCorrect: false }] }))}>+ Добавить вариант</button>
 
-      <button>Сохранить вопрос</button>
+      <div className="row-actions">
+        {editingQuestionId && <button type="button" className="ghost" onClick={() => setEditingQuestionId(null)}>Отмена редактирования</button>}
+        <button>{editingQuestionId ? 'Обновить вопрос' : 'Сохранить вопрос'}</button>
+      </div>
     </form>
 
     <div className="stack">
       <h4>Текущие вопросы ({quiz.questions?.length || 0})</h4>
-      {quiz.questions?.map((q) => <article key={q.id} className="tile"><b>{q.orderIndex + 1}. {q.prompt}</b><span>{q.points} очков</span></article>)}
+      {quiz.questions?.map((q) => <article key={q.id} className="tile"><b>{q.orderIndex + 1}. {q.prompt}</b><span>{q.points} очков</span><button className="ghost" onClick={() => {
+        setEditingQuestionId(q.id);
+        setQuestion({
+          type: q.type,
+          prompt: q.prompt,
+          imageUrl: q.imageUrl || '',
+          allowMultiple: q.allowMultiple,
+          points: q.points,
+          timeLimitSec: q.timeLimitSec || 20,
+          options: q.options.map((option) => ({ text: option.text, isCorrect: option.isCorrect }))
+        });
+      }}>Изменить</button></article>)}
     </div>
 
     <div className="row-actions">
@@ -420,14 +523,15 @@ function WaitingCard({ session, user, onStart }) {
   return <div><h2>Ожидание начала</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>{user?.role === 'ORGANIZER' && <button onClick={onStart}>Начать квиз</button>}</div>;
 }
 
-function QuestionCard({ question, onSubmit, user, onNext }) {
+function QuestionCard({ question, onSubmit, user, answerStats }) {
   const [selected, setSelected] = useState([]);
   useEffect(() => setSelected([]), [question?.id]);
   if (!question) return <p>Ожидаем вопрос...</p>;
   const toggle = (id) => setSelected((prev) => question.allowMultiple ? (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]) : [id]);
   return <div><h2>{question.prompt}</h2>{question.imageUrl && <img className="preview" src={question.imageUrl} alt="Вопрос"/>}
+    {user?.role === 'ORGANIZER' && <p>Ответили: <b>{answerStats.answeredPlayers}</b> / {answerStats.totalPlayers}</p>}
     <div className="stack">{question.options.map((o) => <button key={o.id} className={`option ${selected.includes(o.id) ? 'active' : ''}`} onClick={() => toggle(o.id)}>{o.text}</button>)}</div>
-    {user?.role === 'PARTICIPANT' ? <button onClick={() => onSubmit(selected)} disabled={!selected.length}>Ответить</button> : <button onClick={onNext}>Следующий вопрос</button>}
+    {user?.role === 'PARTICIPANT' && <button onClick={() => onSubmit(selected)} disabled={!selected.length}>Ответить</button>}
   </div>;
 }
 

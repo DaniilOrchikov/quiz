@@ -61,6 +61,19 @@ sessionRouter.post('/join', requireRole('PARTICIPANT'), async (req, res) => {
     return res.status(404).json({ error: 'Room not found' });
   }
 
+  const existingParticipant = await prisma.sessionParticipant.findUnique({
+    where: {
+      sessionId_userId: {
+        sessionId: session.id,
+        userId: req.user.id
+      }
+    }
+  });
+
+  if (session.status !== SessionStatus.WAITING && !existingParticipant) {
+    return res.status(400).json({ error: 'К этой комнате нельзя подключиться: квиз уже запущен или завершен' });
+  }
+
   const participant = await prisma.sessionParticipant.upsert({
     where: {
       sessionId_userId: {
