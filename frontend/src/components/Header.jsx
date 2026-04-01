@@ -13,6 +13,7 @@ export function Header({ user, session, waiting, activeQuiz, secondsLeft, active
       { key: 'join', label: 'Присоединиться к квизу' },
       { key: 'history', label: 'История' }
     ];
+  const activeIndex = Math.max(0, navItems.findIndex((item) => item.key === activeView));
 
   return (
     <header className="header">
@@ -20,11 +21,12 @@ export function Header({ user, session, waiting, activeQuiz, secondsLeft, active
       <div className="header-middle">
         {!user && <span>Авторизуйтесь для начала</span>}
         {user && !session && !activeQuiz && !waiting && (
-          <nav>
+          <nav className="menu-nav" style={{ '--active-index': activeIndex, '--items-count': navItems.length }}>
+            <span className="menu-active-pill" />
             {navItems.map((item) => (
               <button
                 key={item.key}
-                className="ghost"
+                className="menu-link"
                 data-active={item.key === activeView ? 'true' : 'false'}
                 onClick={() => onNavigate(item.key)}
               >

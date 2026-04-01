@@ -43,6 +43,7 @@ export function App() {
   const [currentQuestion, setCurrentQuestion] = useState(stored.currentQuestion || null);
   const [leaderboard, setLeaderboard] = useState(stored.leaderboard || []);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [questionEndsAt, setQuestionEndsAt] = useState(null);
   const [editingQuiz, setEditingQuiz] = useState(null);
   const [participantCount, setParticipantCount] = useState(0);
   const [answerStats, setAnswerStats] = useState(stored.answerStats || {
@@ -58,11 +59,17 @@ export function App() {
   const socketRef = useRef(null);
   const cardContentRef = useRef(null);
   const [cardHeight, setCardHeight] = useState(null);
+  const [uiReady, setUiReady] = useState(false);
 
   useEffect(() => {
     document.body.dataset.theme = theme;
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setUiReady(true), 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -97,13 +104,13 @@ export function App() {
     socket.on('session:started', ({ question, durationSec, startedAt }) => {
       setView('quiz');
       setCurrentQuestion(question);
-      const passed = Math.floor((Date.now() - startedAt) / 1000);
-      setSecondsLeft(Math.max(0, (durationSec || question?.timeLimitSec || 20) - passed));
+      const endTs = startedAt + ((durationSec || question?.timeLimitSec || 20) * 1000);
+      setQuestionEndsAt(endTs);
     });
     socket.on('session:question', ({ question, durationSec, startedAt }) => {
       setCurrentQuestion(question);
-      const passed = Math.floor((Date.now() - startedAt) / 1000);
-      setSecondsLeft(Math.max(0, (durationSec || question?.timeLimitSec || 20) - passed));
+      const endTs = startedAt + ((durationSec || question?.timeLimitSec || 20) * 1000);
+      setQuestionEndsAt(endTs);
     });
     socket.on('session:answer-stats', (stats) => {
       setAnswerStats(stats);
@@ -114,10 +121,12 @@ export function App() {
       setLeaderboard(rows);
       setView('results');
       setSession(null);
+      setQuestionEndsAt(null);
       pushToast('Квиз завершен. Показан итоговый лидерборд.', 'info');
     });
     socket.on('session:cancelled', () => {
       setSession(null);
+      setQuestionEndsAt(null);
       setView('profile');
       pushToast('Организатор отменил квиз. Вы возвращены на главный экран.', 'info');
     });
@@ -135,10 +144,16 @@ export function App() {
   }, [token, pushToast]);
 
   useEffect(() => {
-    if (view !== 'quiz' || !secondsLeft) return;
-    const timer = setInterval(() => setSecondsLeft((s) => (s > 0 ? s - 1 : 0)), 1000);
-    return () => clearInterval(timer);
-  }, [view, secondsLeft]);
+    if (view !== 'quiz' || !questionEndsAt) return;
+    const tick = () => setSecondsLeft(Math.max(0, Math.ceil((questionEndsAt - Date.now()) / 1000)));
+    tick();
+    const timer = setInterval(tick, 250);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [view, questionEndsAt]);
 
   useEffect(() => {
     if (!token || !session?.roomCode) return;
@@ -152,7 +167,8 @@ export function App() {
         if (ack.session.currentQuestion) {
           setCurrentQuestion(ack.session.currentQuestion);
           setView('quiz');
-          setSecondsLeft(ack.session.remainingSec || ack.session.currentQuestion.timeLimitSec || 20);
+          const remaining = ack.session.remainingSec || ack.session.currentQuestion.timeLimitSec || 20;
+          setQuestionEndsAt(Date.now() + remaining * 1000);
         } else if (ack.session.status === 'WAITING') {
           setView('waiting');
         }
@@ -175,9 +191,10 @@ export function App() {
       currentQuestion,
       leaderboard,
       secondsLeft,
+      questionEndsAt,
       answerStats
     }));
-  }, [view, session, currentQuestion, leaderboard, secondsLeft, answerStats]);
+  }, [view, session, currentQuestion, leaderboard, secondsLeft, questionEndsAt, answerStats]);
 
   useLayoutEffect(() => {
     if (!cardContentRef.current) return;
@@ -191,6 +208,12 @@ export function App() {
       window.removeEventListener('resize', calculate);
     };
   }, [view, quizList, dashboard, currentQuestion, leaderboard, participantCount, answerStats, editingQuiz]);
+
+  useEffect(() => {
+    if (view === 'history' || view === 'profile' || view === 'quiz-list') {
+      loadDashboard();
+    }
+  }, [view]);
 
   const onLogin = async (payload, isRegister) => {
     try {
@@ -326,6 +349,7 @@ export function App() {
     if (!ack.ok) return pushToast(ack.error, 'error');
     setSession(null);
     setCurrentQuestion(null);
+    setQuestionEndsAt(null);
     setView('profile');
     pushToast('Вы вышли из квиза', 'info');
   });
@@ -337,7 +361,7 @@ export function App() {
   const activeQuiz = view === 'quiz';
 
   return (
-    <div className={`app ${theme}`}>
+    <div className={`app ${theme} ${uiReady ? 'ready' : 'no-transitions'}`}>
       <GradientBackground disabled={activeQuiz} theme={theme} />
       <Header
         user={user}
@@ -363,10 +387,10 @@ export function App() {
               transition={{ duration: 0.25 }}
             >
               {view === 'auth' && <AuthCard onSubmit={onLogin} />}
-              {view === 'profile' && <ProfileCard user={user} dashboard={dashboard} />}
+              {view === 'profile' && <ProfileCard user={user} dashboard={dashboard} onLogout={logout} />}
               {view === 'quizzes' && <QuizHubCard onOpenCreate={() => setView('quiz-create')} onOpenList={() => setView('quiz-list')} />}
               {view === 'quiz-create' && <QuizCreateCard onCreateQuiz={createQuiz} onBack={() => setView('quizzes')} />}
-              {view === 'quiz-list' && <QuizListCard quizzes={quizList} onLaunch={launchSession} onEditQuiz={openQuizEditor} onDeleteQuiz={deleteQuiz} onBack={() => setView('quizzes')} />}
+              {view === 'quiz-list' && <QuizListCard quizzes={quizList} onLaunch={launchSession} onEditQuiz={openQuizEditor} onDeleteQuiz={deleteQuiz} onBack={() => setView('quiz-create')} />}
               {view === 'join' && <JoinCard onJoin={joinByCode} />}
               {view === 'history' && <HistoryCard dashboard={dashboard} role={user?.role} />}
               {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onAddQuestion={addQuestionToQuiz} onUpdateQuestion={updateQuestionInQuiz} onPublish={publishQuiz} onBack={() => setView('quiz-list')} />}
@@ -399,11 +423,12 @@ function AuthCard({ onSubmit }) {
   </div>;
 }
 
-function ProfileCard({ user, dashboard }) {
+function ProfileCard({ user, dashboard, onLogout }) {
   return <div>
     <h2>Профиль</h2><p>{user?.displayName} ({user?.role})</p>
     {user?.role === 'ORGANIZER' && <p>Перейдите во вкладку «Квизы», чтобы создавать, редактировать, публиковать и запускать квизы.</p>}
     {user?.role === 'PARTICIPANT' && <p>Используйте «Присоединиться», чтобы войти в активный квиз.</p>}
+    <button className="ghost" onClick={onLogout}>Выйти из профиля</button>
     {!dashboard && <p>Загрузка...</p>}
   </div>;
 }
@@ -441,6 +466,7 @@ function QuizCreateCard({ onCreateQuiz, onBack }) {
 function QuizListCard({ quizzes, onLaunch, onEditQuiz, onDeleteQuiz, onBack }) {
   return <div className="stack">
     <h2>Созданные квизы</h2>
+    <button onClick={onBack}>Создать квиз</button>
     {quizzes?.map((quiz) => (
       <article key={quiz.id} className="tile">
         <b>{quiz.title}</b>
@@ -452,7 +478,6 @@ function QuizListCard({ quizzes, onLaunch, onEditQuiz, onDeleteQuiz, onBack }) {
         </div>
       </article>
     ))}
-    <button className="ghost" onClick={onBack}>Назад</button>
   </div>;
 }
 
@@ -631,3 +656,13 @@ function QuestionCard({ question, onSubmit, onLeave, user, answerStats }) {
 function ResultsCard({ leaderboard, onBack }) {
   return <div><h2>Лидерборд</h2><div className="stack">{leaderboard.map((row, i) => <article key={row.id} className="tile"><b>{i + 1}. {row.user.displayName}</b><span>{row.totalScore} очков</span></article>)}</div><button onClick={onBack}>В профиль</button></div>;
 }
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem(STORAGE_KEY);
+    setToken(null);
+    setUser(null);
+    setSession(null);
+    setCurrentQuestion(null);
+    setQuestionEndsAt(null);
+    setView('auth');
+  };

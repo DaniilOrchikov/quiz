@@ -303,6 +303,7 @@ export function createSocketServer(httpServer) {
     socket.on('session:leave', async ({ sessionId }, ack = () => {}) => {
       try {
         if (socket.data.user.role !== 'PARTICIPANT') throw new Error('Only participants can leave');
+        const session = await prisma.quizSession.findUnique({ where: { id: sessionId } });
         const participant = await prisma.sessionParticipant.findUnique({
           where: { sessionId_userId: { sessionId, userId: socket.data.user.id } }
         });
@@ -311,6 +312,9 @@ export function createSocketServer(httpServer) {
         }
         socket.leave(roomName(sessionId));
         await emitParticipantCount(io, sessionId);
+        if (session?.currentQuestionId) {
+          await emitAnswerStats(io, sessionId, session.currentQuestionId);
+        }
         io.to(roomName(sessionId)).emit('session:participant-left', {
           user: { id: socket.data.user.id, displayName: socket.data.user.displayName }
         });
