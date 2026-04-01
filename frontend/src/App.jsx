@@ -217,8 +217,15 @@ export function App() {
 
   const onLogin = async (payload, isRegister) => {
     try {
-      const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-      const data = await request(endpoint, 'POST', null, payload);
+      if (isRegister) {
+        const data = await request('/api/auth/register-confirm', 'POST', null, { email: payload.email, code: payload.code });
+        setToken(data.token);
+        setUser(data.user);
+        setView('profile');
+        pushToast('Аккаунт подтвержден и создан', 'success');
+        return;
+      }
+      const data = await request('/api/auth/login', 'POST', null, payload);
       setToken(data.token);
       setUser(data.user);
       setView('profile');
@@ -353,6 +360,16 @@ export function App() {
     setView('profile');
     pushToast('Вы вышли из квиза', 'info');
   });
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem(STORAGE_KEY);
+    setToken(null);
+    setUser(null);
+    setSession(null);
+    setCurrentQuestion(null);
+    setQuestionEndsAt(null);
+    setView('auth');
+  };
   const submitAnswer = (optionIds) => socketRef.current?.emit('session:submit-answer', { sessionId: session.id, questionId: currentQuestion.id, optionIds }, (ack) => {
     if (!ack.ok) return pushToast(ack.error, 'error');
     pushToast('Ответ принят', 'success');
@@ -369,9 +386,11 @@ export function App() {
         secondsLeft={secondsLeft}
         activeQuiz={activeQuiz}
         waiting={view === 'waiting'}
-        activeView={view === 'create-quiz' || view === 'quiz-create' || view === 'quiz-list' ? 'quizzes' : view}
+        activeView={view === 'create-quiz' || view === 'quiz-list' ? 'quizzes' : view}
         onNavigate={setView}
         onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+        theme={theme}
+        onLeaveQuiz={leaveQuiz}
       />
 
       <main className="content">
@@ -388,14 +407,12 @@ export function App() {
             >
               {view === 'auth' && <AuthCard onSubmit={onLogin} />}
               {view === 'profile' && <ProfileCard user={user} dashboard={dashboard} onLogout={logout} />}
-              {view === 'quizzes' && <QuizHubCard onOpenCreate={() => setView('quiz-create')} onOpenList={() => setView('quiz-list')} />}
-              {view === 'quiz-create' && <QuizCreateCard onCreateQuiz={createQuiz} onBack={() => setView('quizzes')} />}
-              {view === 'quiz-list' && <QuizListCard quizzes={quizList} onLaunch={launchSession} onEditQuiz={openQuizEditor} onDeleteQuiz={deleteQuiz} onBack={() => setView('quiz-create')} />}
+              {view === 'quizzes' && <QuizListCard quizzes={quizList} onLaunch={launchSession} onEditQuiz={openQuizEditor} onDeleteQuiz={deleteQuiz} onCreateQuiz={createQuiz} />}
               {view === 'join' && <JoinCard onJoin={joinByCode} />}
               {view === 'history' && <HistoryCard dashboard={dashboard} role={user?.role} />}
               {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onAddQuestion={addQuestionToQuiz} onUpdateQuestion={updateQuestionInQuiz} onPublish={publishQuiz} onBack={() => setView('quiz-list')} />}
-              {view === 'waiting' && <WaitingCard session={session} user={user} onStart={startQuiz} onCancel={cancelQuiz} onLeave={leaveQuiz} participantCount={participantCount} />}
-              {view === 'quiz' && <QuestionCard question={currentQuestion} onSubmit={submitAnswer} onLeave={leaveQuiz} user={user} answerStats={answerStats} />}
+              {view === 'waiting' && <WaitingCard session={session} user={user} onStart={startQuiz} onCancel={cancelQuiz} participantCount={participantCount} />}
+              {view === 'quiz' && <QuestionCard question={currentQuestion} totalQuestions={session?.quiz?.questionCount || 0} onSubmit={submitAnswer} onLeave={leaveQuiz} user={user} answerStats={answerStats} />}
               {view === 'results' && <ResultsCard leaderboard={leaderboard} onBack={() => setView('profile')} />}
             </motion.div>
           </AnimatePresence>
@@ -409,17 +426,35 @@ export function App() {
 
 function AuthCard({ onSubmit }) {
   const [isRegister, setRegister] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '', displayName: '', role: 'PARTICIPANT' });
+  const [step, setStep] = useState('init');
+  const [form, setForm] = useState({ email: '', password: '', displayName: '', role: 'PARTICIPANT', code: '' });
   return <div>
     <h2>{isRegister ? 'Регистрация' : 'Вход'}</h2>
-    <form className="stack" onSubmit={(e) => { e.preventDefault(); onSubmit(form, isRegister); }}>
-      {isRegister && <input placeholder="Имя" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} required />}
+    <form className="stack" onSubmit={async (e) => {
+      e.preventDefault();
+      if (isRegister && step === 'init') {
+        try {
+          await request('/api/auth/register-init', 'POST', null, form);
+          setStep('confirm');
+          pushToast('Код подтверждения отправлен', 'info');
+        } catch (error) {
+          pushToast(error.message, 'error');
+        }
+        return;
+      }
+      onSubmit(form, isRegister);
+    }}>
+      {isRegister && step === 'init' && <input placeholder="Имя" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} required />}
       <input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-      <input placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-      {isRegister && <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}><option value="PARTICIPANT">Участник</option><option value="ORGANIZER">Организатор</option></select>}
-      <button>Продолжить</button>
+      {!isRegister && <input placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />}
+      {isRegister && step === 'init' && <>
+        <input placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+        <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}><option value="PARTICIPANT">Участник</option><option value="ORGANIZER">Организатор</option></select>
+      </>}
+      {isRegister && step === 'confirm' && <input placeholder="Код подтверждения из email" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required />}
+      <button>{isRegister && step === 'init' ? 'Отправить код' : 'Продолжить'}</button>
     </form>
-    <button className="ghost" onClick={() => setRegister((s) => !s)}>{isRegister ? 'Уже есть аккаунт' : 'Создать аккаунт'}</button>
+    <button className="ghost" onClick={() => { setRegister((s) => !s); setStep('init'); }}>{isRegister ? 'Уже есть аккаунт' : 'Создать аккаунт'}</button>
   </div>;
 }
 
@@ -433,19 +468,11 @@ function ProfileCard({ user, dashboard, onLogout }) {
   </div>;
 }
 
-function QuizHubCard({ onOpenCreate, onOpenList }) {
-  return <div className="stack">
-    <h2>Квизы</h2>
-    <button onClick={onOpenCreate}>Создать квиз</button>
-    <button className="ghost" onClick={onOpenList}>Созданные квизы</button>
-  </div>;
-}
-
-function QuizCreateCard({ onCreateQuiz, onBack }) {
+function QuizListCard({ quizzes, onLaunch, onEditQuiz, onDeleteQuiz, onCreateQuiz }) {
   const [newQuiz, setNewQuiz] = useState({ title: '', description: '', categoryNames: '' });
 
   return <div className="stack">
-    <h2>Создание квиза</h2>
+    <h2>Квизы</h2>
     <form className="stack" onSubmit={(e) => {
       e.preventDefault();
       onCreateQuiz({
@@ -459,14 +486,6 @@ function QuizCreateCard({ onCreateQuiz, onBack }) {
       <input placeholder="Категории через запятую" value={newQuiz.categoryNames} onChange={(e) => setNewQuiz({ ...newQuiz, categoryNames: e.target.value })} />
       <button>Создать квиз</button>
     </form>
-    <button className="ghost" onClick={onBack}>Назад</button>
-  </div>;
-}
-
-function QuizListCard({ quizzes, onLaunch, onEditQuiz, onDeleteQuiz, onBack }) {
-  return <div className="stack">
-    <h2>Созданные квизы</h2>
-    <button onClick={onBack}>Создать квиз</button>
     {quizzes?.map((quiz) => (
       <article key={quiz.id} className="tile">
         <b>{quiz.title}</b>
@@ -618,22 +637,21 @@ function HistoryCard({ dashboard, role }) {
   return <div><h2>История</h2>{role === 'ORGANIZER' ? dashboard?.quizzes?.map((q) => <article className="tile" key={q.id}>{q.title}<span>Сессий: {q._count.sessions}</span></article>) : dashboard?.participations?.map((p) => <article className="tile" key={p.id}>{p.session.quiz.title}<span>{p.totalScore} очков</span></article>)}</div>;
 }
 
-function WaitingCard({ session, user, onStart, onCancel, onLeave, participantCount }) {
+function WaitingCard({ session, user, onStart, onCancel, participantCount }) {
   return <div className="stack"><h2>Ожидание начала</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>
     {user?.role === 'ORGANIZER' && <p>Подключилось игроков: <b>{participantCount}</b></p>}
     {user?.role === 'ORGANIZER' && <div className="row-actions"><button onClick={onStart}>Начать квиз</button><button className="ghost" onClick={onCancel}>Отменить квиз</button></div>}
-    {user?.role === 'PARTICIPANT' && <button className="ghost" onClick={onLeave}>Выйти из квиза</button>}
   </div>;
 }
 
-function QuestionCard({ question, onSubmit, onLeave, user, answerStats }) {
+function QuestionCard({ question, totalQuestions, onSubmit, onLeave, user, answerStats }) {
   const [selected, setSelected] = useState([]);
   const [submitted, setSubmitted] = useState(false);
   useEffect(() => setSelected([]), [question?.id]);
   useEffect(() => setSubmitted(false), [question?.id]);
   if (!question) return <p>Ожидаем вопрос...</p>;
   const toggle = (id) => setSelected((prev) => question.allowMultiple ? (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]) : [id]);
-  return <div><h2>{question.prompt}</h2>{question.imageUrl && <img className="preview" src={question.imageUrl} alt="Вопрос"/>}
+  return <div className="stack centered"><h2>Вопрос {question.orderIndex + 1}/{totalQuestions || '?'}</h2><p>{question.prompt}</p>{question.imageUrl && <img className="preview" src={question.imageUrl} alt="Вопрос"/>}
     {user?.role === 'ORGANIZER' && (
       <div className="stack">
         <p>Ответили: <b>{answerStats.answeredPlayers}</b> / {answerStats.totalPlayers}</p>
@@ -643,11 +661,10 @@ function QuestionCard({ question, onSubmit, onLeave, user, answerStats }) {
     )}
     {user?.role === 'PARTICIPANT' && (
       <>
-        {!submitted && <div className="stack">{question.options.map((o) => <button key={o.id} className={`option ${selected.includes(o.id) ? 'active' : ''}`} onClick={() => toggle(o.id)}>{o.text}</button>)}</div>}
+        {!submitted && <div className="stack field-full">{question.options.map((o) => <button key={o.id} className={`option ${selected.includes(o.id) ? 'active' : ''}`} onClick={() => toggle(o.id)}>{o.text}</button>)}</div>}
         {!submitted
-          ? <button onClick={() => { onSubmit(selected); setSubmitted(true); }} disabled={!selected.length}>Ответить</button>
+          ? <button className="field-half" onClick={() => { onSubmit(selected); setSubmitted(true); }} disabled={!selected.length}>Ответить</button>
           : <p>Ответ отправлен. Ответили: <b>{answerStats.answeredPlayers}</b> / {answerStats.totalPlayers}</p>}
-        <button className="ghost" onClick={onLeave}>Выйти из квиза</button>
       </>
     )}
   </div>;
@@ -656,13 +673,3 @@ function QuestionCard({ question, onSubmit, onLeave, user, answerStats }) {
 function ResultsCard({ leaderboard, onBack }) {
   return <div><h2>Лидерборд</h2><div className="stack">{leaderboard.map((row, i) => <article key={row.id} className="tile"><b>{i + 1}. {row.user.displayName}</b><span>{row.totalScore} очков</span></article>)}</div><button onClick={onBack}>В профиль</button></div>;
 }
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem(STORAGE_KEY);
-    setToken(null);
-    setUser(null);
-    setSession(null);
-    setCurrentQuestion(null);
-    setQuestionEndsAt(null);
-    setView('auth');
-  };

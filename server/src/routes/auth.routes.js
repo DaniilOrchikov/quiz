@@ -6,8 +6,9 @@ import { signToken } from '../utils/jwt.js';
 import { requireAuth } from '../middleware/auth.js';
 
 export const authRouter = express.Router();
+const pendingRegistrations = new Map();
 
-authRouter.post('/register', async (req, res) => {
+authRouter.post('/register-init', async (req, res) => {
   const { email, password, displayName, role } = req.body;
 
   if (!email || !password || !displayName || !role) {
@@ -23,23 +24,41 @@ authRouter.post('/register', async (req, res) => {
     return res.status(409).json({ error: 'Email already in use' });
   }
 
+  const verificationCode = String(Math.floor(100000 + Math.random() * 900000));
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await prisma.user.create({
-    data: {
-      email,
-      passwordHash,
-      displayName,
-      role
-    },
-    select: {
-      id: true,
-      email: true,
-      displayName: true,
-      role: true,
-      createdAt: true
-    }
+  pendingRegistrations.set(email, {
+    email,
+    passwordHash,
+    displayName,
+    role,
+    verificationCode,
+    expiresAt: Date.now() + 15 * 60 * 1000
   });
 
+  console.log(`[EMAIL VERIFICATION] ${email}: ${verificationCode}`);
+  return res.status(200).json({ message: 'Код подтверждения отправлен на email' });
+});
+
+authRouter.post('/register-confirm', async (req, res) => {
+  const { email, code } = req.body;
+  const pending = pendingRegistrations.get(email);
+  if (!pending) return res.status(400).json({ error: 'No pending registration found' });
+  if (Date.now() > pending.expiresAt) {
+    pendingRegistrations.delete(email);
+    return res.status(400).json({ error: 'Verification code expired' });
+  }
+  if (pending.verificationCode !== code) return res.status(400).json({ error: 'Invalid verification code' });
+
+  const user = await prisma.user.create({
+    data: {
+      email: pending.email,
+      passwordHash: pending.passwordHash,
+      displayName: pending.displayName,
+      role: pending.role
+    },
+    select: { id: true, email: true, displayName: true, role: true, createdAt: true }
+  });
+  pendingRegistrations.delete(email);
   const token = signToken(user);
   return res.status(201).json({ token, user });
 });

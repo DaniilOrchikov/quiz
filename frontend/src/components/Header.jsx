@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function Header({ user, session, waiting, activeQuiz, secondsLeft, activeView, onNavigate, onToggleTheme }) {
+export function Header({ user, session, waiting, activeQuiz, secondsLeft, activeView, onNavigate, onToggleTheme, theme, onLeaveQuiz }) {
   const isOrganizer = user?.role === 'ORGANIZER';
   const navItems = isOrganizer
     ? [
@@ -10,16 +10,19 @@ export function Header({ user, session, waiting, activeQuiz, secondsLeft, active
     ]
     : [
       { key: 'profile', label: 'Профиль' },
-      { key: 'join', label: 'Присоединиться к квизу' },
+      { key: 'join', label: 'Присоединиться' },
       { key: 'history', label: 'История' }
     ];
+
   const activeIndex = Math.max(0, navItems.findIndex((item) => item.key === activeView));
 
   return (
     <header className="header">
-      <div className="brand">QUIZ LIVE</div>
+      <button className="theme-icon" onClick={onToggleTheme} aria-label="toggle theme">
+        {theme === 'light' ? <span className="material-symbols-outlined">wb_sunny</span> : <span className="moon">☾</span>}
+      </button>
+
       <div className="header-middle">
-        {!user && <span>Авторизуйтесь для начала</span>}
         {user && !session && !activeQuiz && !waiting && (
           <nav className="menu-nav" style={{ '--active-index': activeIndex, '--items-count': navItems.length }}>
             <span className="menu-active-pill" />
@@ -38,7 +41,10 @@ export function Header({ user, session, waiting, activeQuiz, secondsLeft, active
         {session && waiting && <span>Ожидание начала квиза…</span>}
         {activeQuiz && <span className="timer">{secondsLeft}s</span>}
       </div>
-      <button className="theme" onClick={onToggleTheme}>Сменить тему</button>
+
+      {!isOrganizer && session && (waiting || activeQuiz) ? (
+        <button className="ghost" onClick={onLeaveQuiz}>Выйти из квиза</button>
+      ) : <div style={{ width: 40 }} />}
     </header>
   );
 }
