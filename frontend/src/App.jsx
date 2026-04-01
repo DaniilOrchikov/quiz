@@ -284,8 +284,10 @@ export function App() {
       setView('create-quiz');
       await loadDashboard();
       pushToast('Квиз создан. Добавьте вопросы и опубликуйте.', 'success');
+      return created;
     } catch (e) {
       pushToast(e.message, 'error');
+      return null;
     }
   };
 
@@ -296,8 +298,10 @@ export function App() {
       setEditingQuiz(quiz);
       await loadDashboard();
       pushToast('Вопрос добавлен', 'success');
+      return true;
     } catch (e) {
       pushToast(e.message, 'error');
+      return false;
     }
   };
 
@@ -308,8 +312,10 @@ export function App() {
       setEditingQuiz(quiz);
       await loadDashboard();
       pushToast('Вопрос обновлен', 'success');
+      return true;
     } catch (e) {
       pushToast(e.message, 'error');
+      return false;
     }
   };
 
@@ -330,7 +336,7 @@ export function App() {
       await request(`/api/quizzes/${quizId}`, 'DELETE', token);
       await loadDashboard();
       pushToast('Квиз удален из списка активных', 'success');
-      setView('quiz-list');
+      setView('quizzes');
     } catch (e) {
       pushToast(e.message, 'error');
     }
@@ -407,10 +413,10 @@ export function App() {
             >
               {view === 'auth' && <AuthCard onSubmit={onLogin} />}
               {view === 'profile' && <ProfileCard user={user} dashboard={dashboard} onLogout={logout} />}
-              {view === 'quizzes' && <QuizListCard quizzes={quizList} onLaunch={launchSession} onEditQuiz={openQuizEditor} onDeleteQuiz={deleteQuiz} onCreateQuiz={createQuiz} />}
+              {view === 'quizzes' && <QuizListCard quizzes={quizList} user={user} onLaunch={launchSession} onEditQuiz={openQuizEditor} onDeleteQuiz={deleteQuiz} onCreateQuizClick={() => { setEditingQuiz(null); setView('create-quiz'); }} />}
               {view === 'join' && <JoinCard onJoin={joinByCode} />}
               {view === 'history' && <HistoryCard dashboard={dashboard} role={user?.role} />}
-              {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onAddQuestion={addQuestionToQuiz} onUpdateQuestion={updateQuestionInQuiz} onPublish={publishQuiz} onBack={() => setView('quiz-list')} />}
+              {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onCreateQuiz={createQuiz} onAddQuestion={addQuestionToQuiz} onUpdateQuestion={updateQuestionInQuiz} onPublish={publishQuiz} onBack={() => setView('quizzes')} />}
               {view === 'waiting' && <WaitingCard session={session} user={user} onStart={startQuiz} onCancel={cancelQuiz} participantCount={participantCount} />}
               {view === 'quiz' && <QuestionCard question={currentQuestion} totalQuestions={session?.quiz?.questionCount || 0} onSubmit={submitAnswer} onLeave={leaveQuiz} user={user} answerStats={answerStats} />}
               {view === 'results' && <ResultsCard leaderboard={leaderboard} onBack={() => setView('profile')} />}
@@ -459,33 +465,23 @@ function AuthCard({ onSubmit }) {
 }
 
 function ProfileCard({ user, dashboard, onLogout }) {
-  return <div>
-    <h2>Профиль</h2><p>{user?.displayName} ({user?.role})</p>
-    {user?.role === 'ORGANIZER' && <p>Перейдите во вкладку «Квизы», чтобы создавать, редактировать, публиковать и запускать квизы.</p>}
-    {user?.role === 'PARTICIPANT' && <p>Используйте «Присоединиться», чтобы войти в активный квиз.</p>}
+  return <div className="stack centered">
+    <h2>Профиль</h2>
+    <article className="tile profile-tile">
+      <p><b>{user?.displayName}</b></p>
+      <p>{user?.role}</p>
+      {user?.role === 'ORGANIZER' && <p>Перейдите во вкладку «Квизы», чтобы создавать, редактировать, публиковать и запускать квизы.</p>}
+      {user?.role === 'PARTICIPANT' && <p>Используйте «Присоединиться», чтобы войти в активный квиз.</p>}
+    </article>
     <button className="ghost" onClick={onLogout}>Выйти из профиля</button>
     {!dashboard && <p>Загрузка...</p>}
   </div>;
 }
 
-function QuizListCard({ quizzes, onLaunch, onEditQuiz, onDeleteQuiz, onCreateQuiz }) {
-  const [newQuiz, setNewQuiz] = useState({ title: '', description: '', categoryNames: '' });
-
+function QuizListCard({ quizzes, user, onLaunch, onEditQuiz, onDeleteQuiz, onCreateQuizClick }) {
   return <div className="stack">
     <h2>Квизы</h2>
-    <form className="stack" onSubmit={(e) => {
-      e.preventDefault();
-      onCreateQuiz({
-        title: newQuiz.title,
-        description: newQuiz.description,
-        categoryNames: newQuiz.categoryNames.split(',').map((s) => s.trim()).filter(Boolean)
-      });
-    }}>
-      <input placeholder="Название квиза" value={newQuiz.title} onChange={(e) => setNewQuiz({ ...newQuiz, title: e.target.value })} required />
-      <input placeholder="Описание" value={newQuiz.description} onChange={(e) => setNewQuiz({ ...newQuiz, description: e.target.value })} />
-      <input placeholder="Категории через запятую" value={newQuiz.categoryNames} onChange={(e) => setNewQuiz({ ...newQuiz, categoryNames: e.target.value })} />
-      <button>Создать квиз</button>
-    </form>
+    {user?.role === 'ORGANIZER' && <button onClick={onCreateQuizClick}>Создать квиз</button>}
     {quizzes?.map((quiz) => (
       <article key={quiz.id} className="tile">
         <b>{quiz.title}</b>
@@ -500,7 +496,8 @@ function QuizListCard({ quizzes, onLaunch, onEditQuiz, onDeleteQuiz, onCreateQui
   </div>;
 }
 
-function CreateQuizCard({ quiz, onAddQuestion, onUpdateQuestion, onPublish, onBack }) {
+function CreateQuizCard({ quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, onPublish, onBack }) {
+  const [newQuiz, setNewQuiz] = useState({ title: '', description: '', categoryNames: '' });
   const [question, setQuestion] = useState({
     type: 'TEXT',
     prompt: '',
@@ -515,8 +512,29 @@ function CreateQuizCard({ quiz, onAddQuestion, onUpdateQuestion, onPublish, onBa
   });
   const [editingQuestionId, setEditingQuestionId] = useState(null);
 
+  const handleCreateQuiz = async (e) => {
+    e.preventDefault();
+    const created = await onCreateQuiz({
+      title: newQuiz.title,
+      description: newQuiz.description,
+      categoryNames: newQuiz.categoryNames.split(',').map((s) => s.trim()).filter(Boolean)
+    });
+    if (created) {
+      setNewQuiz({ title: '', description: '', categoryNames: '' });
+    }
+  };
+
   if (!quiz) {
-    return <div><h2>Редактор квиза</h2><p>Сначала создайте квиз в профиле.</p><button onClick={onBack}>Назад</button></div>;
+    return <div className="stack">
+      <h2>Создание квиза</h2>
+      <form className="stack" onSubmit={handleCreateQuiz}>
+        <input placeholder="Название квиза" value={newQuiz.title} onChange={(e) => setNewQuiz({ ...newQuiz, title: e.target.value })} required />
+        <input placeholder="Описание" value={newQuiz.description} onChange={(e) => setNewQuiz({ ...newQuiz, description: e.target.value })} />
+        <input placeholder="Категории через запятую" value={newQuiz.categoryNames} onChange={(e) => setNewQuiz({ ...newQuiz, categoryNames: e.target.value })} />
+        <button>Создать квиз</button>
+      </form>
+      <button className="ghost" onClick={onBack}>Назад</button>
+    </div>;
   }
 
   const changeOption = (index, patch) => {
@@ -536,32 +554,35 @@ function CreateQuizCard({ quiz, onAddQuestion, onUpdateQuestion, onPublish, onBa
     <h2>Редактор квиза: {quiz.title}</h2>
     <p>Статус: <b>{quiz.status}</b></p>
 
-    <form className="stack" onSubmit={(e) => {
+    <form className="stack" onSubmit={async (e) => {
       e.preventDefault();
       const payload = {
         ...question,
         options: question.options.filter((option) => option.text.trim())
       };
 
+      let success = false;
       if (editingQuestionId) {
-        onUpdateQuestion(quiz.id, editingQuestionId, payload);
+        success = await onUpdateQuestion(quiz.id, editingQuestionId, payload);
       } else {
-        onAddQuestion(quiz.id, payload);
+        success = await onAddQuestion(quiz.id, payload);
       }
 
-      setQuestion({
-        type: 'TEXT',
-        prompt: '',
-        imageUrl: '',
-        allowMultiple: false,
-        points: 100,
-        timeLimitSec: 20,
-        options: [
-          { text: '', isCorrect: false },
-          { text: '', isCorrect: false }
-        ]
-      });
-      setEditingQuestionId(null);
+      if (success) {
+        setQuestion({
+          type: 'TEXT',
+          prompt: '',
+          imageUrl: '',
+          allowMultiple: false,
+          points: 100,
+          timeLimitSec: 20,
+          options: [
+            { text: '', isCorrect: false },
+            { text: '', isCorrect: false }
+          ]
+        });
+        setEditingQuestionId(null);
+      }
     }}>
       <select value={question.type} onChange={(e) => setQuestion({ ...question, type: e.target.value })}>
         <option value="TEXT">Текстовый вопрос</option>
@@ -630,11 +651,11 @@ function CreateQuizCard({ quiz, onAddQuestion, onUpdateQuestion, onPublish, onBa
 
 function JoinCard({ onJoin }) {
   const [roomCode, setRoomCode] = useState('');
-  return <div><h2>Подключение к квизу</h2><form className="stack" onSubmit={(e) => { e.preventDefault(); onJoin(roomCode.trim().toUpperCase()); }}><input maxLength={6} placeholder="Код комнаты" value={roomCode} onChange={(e) => setRoomCode(e.target.value)} required/><button>Подключиться</button></form></div>;
+  return <div className="stack centered"><h2>Присоединиться к квизу</h2><form className="stack centered" onSubmit={(e) => { e.preventDefault(); onJoin(roomCode.trim().toUpperCase()); }}><input className="field-half" maxLength={6} placeholder="Код комнаты" value={roomCode} onChange={(e) => setRoomCode(e.target.value)} required/><button>Подключиться</button></form></div>;
 }
 
 function HistoryCard({ dashboard, role }) {
-  return <div><h2>История</h2>{role === 'ORGANIZER' ? dashboard?.quizzes?.map((q) => <article className="tile" key={q.id}>{q.title}<span>Сессий: {q._count.sessions}</span></article>) : dashboard?.participations?.map((p) => <article className="tile" key={p.id}>{p.session.quiz.title}<span>{p.totalScore} очков</span></article>)}</div>;
+  return <div className="stack centered"><h2>История</h2><div className="stack field-full">{role === 'ORGANIZER' ? dashboard?.quizzes?.map((q) => <article className="tile" key={q.id}>{q.title}<span>Сессий: {q._count.sessions}</span></article>) : dashboard?.participations?.map((p) => <article className="tile" key={p.id}>{p.session.quiz.title}<span>{p.totalScore} очков</span></article>)}</div></div>;
 }
 
 function WaitingCard({ session, user, onStart, onCancel, participantCount }) {

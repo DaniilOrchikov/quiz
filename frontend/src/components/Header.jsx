@@ -19,7 +19,7 @@ export function Header({ user, session, waiting, activeQuiz, secondsLeft, active
   return (
     <header className="header">
       <button className="theme-icon" onClick={onToggleTheme} aria-label="toggle theme">
-        {theme === 'light' ? <span className="material-symbols-outlined">wb_sunny</span> : <span className="moon">☾</span>}
+        {theme === 'light' ? <span className="material-symbols-outlined">wb_sunny</span> : <span className="material-symbols-outlined">moon_stars</span>}
       </button>
 
       <div className="header-middle">
