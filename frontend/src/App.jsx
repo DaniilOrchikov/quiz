@@ -45,6 +45,48 @@ function toRuError(message) {
   return map[message] || message || 'Произошла ошибка';
 }
 
+function CustomSelect({ value, onChange, options, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const current = options.find((option) => option.value === value);
+
+  useEffect(() => {
+    const onClickOutside = (event) => {
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  return (
+    <div className={`custom-select ${open ? 'open' : ''}`} ref={rootRef}>
+      <button type="button" className="custom-select-trigger" onClick={() => setOpen((prev) => !prev)}>
+        <span>{current?.label || placeholder || 'Выберите значение'}</span>
+        <span className="material-symbols-outlined custom-select-icon">expand_more</span>
+      </button>
+      {open && (
+        <div className="custom-select-menu">
+          {options.map((option) => (
+            <button
+              type="button"
+              key={option.value}
+              className={`custom-select-option ${option.value === value ? 'active' : ''}`}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function App() {
   const stored = readStoredState();
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
@@ -476,7 +518,16 @@ function AuthCard({ onSubmit }) {
       {isRegister && step === 'init' && <>
         <input className="field-half" placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
         {isWeakPassword && <p className="error-text">Простой пароль</p>}
-        <select className="field-half" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}><option value="PARTICIPANT">Участник</option><option value="ORGANIZER">Организатор</option></select>
+        <div className="field-half">
+          <CustomSelect
+            value={form.role}
+            onChange={(nextValue) => setForm({ ...form, role: nextValue })}
+            options={[
+              { value: 'PARTICIPANT', label: 'Участник' },
+              { value: 'ORGANIZER', label: 'Организатор' }
+            ]}
+          />
+        </div>
       </>}
       {isRegister && step === 'confirm' && <input className="field-half" placeholder="Код подтверждения из email" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required />}
       <button>{isRegister && step === 'init' ? 'Отправить код' : 'Продолжить'}</button>
@@ -610,10 +661,16 @@ function CreateQuizCard({ quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, o
         setEditingQuestionId(null);
       }
     }}>
-      <select className="field-half" value={question.type} onChange={(e) => setQuestion({ ...question, type: e.target.value })}>
-        <option value="TEXT">Текстовый вопрос</option>
-        <option value="IMAGE">Вопрос с изображением</option>
-      </select>
+      <div className="field-half">
+        <CustomSelect
+          value={question.type}
+          onChange={(nextValue) => setQuestion({ ...question, type: nextValue })}
+          options={[
+            { value: 'TEXT', label: 'Текстовый вопрос' },
+            { value: 'IMAGE', label: 'Вопрос с изображением' }
+          ]}
+        />
+      </div>
       <input className="field-half" placeholder="Текст вопроса" value={question.prompt} onChange={(e) => setQuestion({ ...question, prompt: e.target.value })} required />
       {question.type === 'IMAGE' && <>
         <input className="field-half" placeholder="URL изображения" value={question.imageUrl} onChange={(e) => setQuestion({ ...question, imageUrl: e.target.value })} required />
@@ -688,7 +745,7 @@ function HistoryCard({ dashboard, role }) {
 }
 
 function WaitingCard({ session, user, onStart, onCancel, participantCount }) {
-  return <div className="stack"><h2>Ожидание начала</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>
+  return <div className="stack centered"><h2>Ожидание начала</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>
     {user?.role === 'ORGANIZER' && <p>Подключилось игроков: <b>{participantCount}</b></p>}
     {user?.role === 'ORGANIZER' && <div className="row-actions"><button onClick={onStart}>Начать квиз</button><button className="ghost" onClick={onCancel}>Отменить квиз</button></div>}
   </div>;
@@ -711,7 +768,7 @@ function QuestionCard({ question, totalQuestions, onSubmit, onLeave, user, answe
     )}
     {user?.role === 'PARTICIPANT' && (
       <>
-        {!submitted && <div className="stack field-full">{question.options.map((o) => <button key={o.id} className={`option option-answer ${selected.includes(o.id) ? 'active' : ''}`} onClick={() => toggle(o.id)}><span className="option-indicator" aria-hidden="true" />{o.text}</button>)}</div>}
+        {!submitted && <div className="stack field-full">{question.options.map((o) => <button key={o.id} className={`option option-answer ${selected.includes(o.id) ? 'active' : ''}`} onClick={() => toggle(o.id)}><span className={`option-indicator ${question.allowMultiple ? 'checkbox' : 'radio'}`} aria-hidden="true" />{o.text}</button>)}</div>}
         {!submitted
           ? <button className="field-half" onClick={() => { onSubmit(selected); setSubmitted(true); }} disabled={!selected.length}>Ответить</button>
           : <p>Ответ отправлен. Ответили: <b>{answerStats.answeredPlayers}</b> / {answerStats.totalPlayers}</p>}
