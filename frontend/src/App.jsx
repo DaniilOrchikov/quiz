@@ -564,7 +564,8 @@ function ProfileCard({user, dashboard, onLogout}) {
 function QuizListCard({quizzes, user, onLaunch, onEditQuiz, onDeleteQuiz, onCreateQuizClick}) {
     return <div className="stack centered">
         <h2 style={{marginBottom: 0}}>Квизы</h2>
-        {user?.role === 'ORGANIZER' && <button style={{marginBottom: 20}} onClick={onCreateQuizClick}>Создать квиз</button>}
+        {user?.role === 'ORGANIZER' &&
+            <button style={{marginBottom: 20}} onClick={onCreateQuizClick}>Создать квиз</button>}
         {quizzes?.map((quiz) => (
             <article key={quiz.id} className="tile quiz-row">
                 <b className="quiz-col-title">{quiz.title}</b>
@@ -717,10 +718,10 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
             <h4>Варианты ответа</h4>
             {question.options.map((option, idx) => (
                 <div key={idx} className="option-editor">
+                    <input type="checkbox" checked={option.isCorrect}
+                           onChange={(e) => changeOption(idx, {isCorrect: e.target.checked})}/>
                     <input placeholder={`Вариант ${idx + 1}`} value={option.text}
                            onChange={(e) => changeOption(idx, {text: e.target.value})} required/>
-                    <label><input type="checkbox" checked={option.isCorrect}
-                                  onChange={(e) => changeOption(idx, {isCorrect: e.target.checked})}/> Правильный</label>
                     <button
                         type="button"
                         className="ghost field-full option-remove"
@@ -730,7 +731,7 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
                         }))}
                         disabled={question.options.length <= 2}
                     >
-                        Удалить вариант
+                        Удалить
                     </button>
                 </div>
             ))}
@@ -751,7 +752,8 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
         <div className="stack field-full">
             <h4>Текущие вопросы ({quiz.questions?.length || 0})</h4>
             {quiz.questions?.map((q) => <article key={q.id} className="tile">
-                <b>{q.orderIndex + 1}. {q.prompt}</b><span>{q.points} очков</span>
+                <p><b>{q.orderIndex + 1}. {q.prompt}</b></p>
+                <p>{q.points} очков</p>
                 <button className="ghost" onClick={() => {
                     setEditingQuestionId(q.id);
                     setQuestion({
