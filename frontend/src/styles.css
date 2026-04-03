@@ -212,7 +212,7 @@ body, html, #root {
 }
 
 input, select, button {
-    border: 1px solid color-mix(in oklab, var(--text) 22%, transparent);
+    border: 2px solid transparent;
     border-radius: var(--radius-sub);
     padding: 12px 14px;
     font-size: var(--font-md);
@@ -223,11 +223,11 @@ input, select, button {
 input, select {
     background: transparent;
     color: var(--text);
+    border-color: color-mix(in oklab, var(--text) 22%, transparent);
 }
 
 input:focus, select:focus, button:focus-visible {
     outline: none;
-    border-width: 2px;
     border-color: var(--accent);
 }
 
@@ -235,7 +235,7 @@ button {
     background: var(--accent);
     color: #fff;
     cursor: pointer;
-    border: none;
+    border: 2px solid transparent;
     width: 40%;
     align-self: center;
 }
@@ -279,7 +279,7 @@ button.ghost {
 
 .option-editor {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr auto auto;
     gap: 10px;
     align-items: center;
     background: var(--bg-main);
@@ -297,12 +297,12 @@ button.ghost {
     background: var(--bg-main);
     color: var(--text);
     width: 100%;
-    border: 1px solid color-mix(in oklab, var(--text) 22%, transparent);
-    transition: border-color .2s ease, border-width .2s ease;
+    border: 2px solid color-mix(in oklab, var(--text) 22%, transparent);
+    transition: border-color .2s ease;
 }
 
 .option.active {
-    border: 2px solid var(--accent);
+    border-color: var(--accent);
 }
 
 .option-answer {
@@ -399,6 +399,11 @@ input[type='checkbox'], input[type='radio'] {
     appearance: none;
     width: 24px;
     height: 24px;
+    min-height: 0;
+    max-height: 24px;
+    padding: 0;
+    flex: 0 0 24px;
+    aspect-ratio: 1 / 1;
     border: 2px solid var(--accent);
     border-radius: 4px;
     display: inline-grid;
@@ -426,8 +431,8 @@ input[type='checkbox']:checked::before, input[type='radio']:checked::before {
 
 input[type='radio']::before {
     content: '';
-    width: 24px;
-    height: 24px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     background: var(--accent);
 }
@@ -487,14 +492,14 @@ input[type='number'] {
     width: 100%;
     background: transparent;
     color: var(--text);
-    border: 1px solid color-mix(in oklab, var(--text) 22%, transparent);
+    border: 2px solid color-mix(in oklab, var(--text) 22%, transparent);
     display: flex;
     align-items: center;
     justify-content: space-between;
 }
 
 .custom-select-trigger.open {
-    border: 2px solid var(--accent);
+    border-color: var(--accent);
 }
 
 .custom-select-chevron {
@@ -510,8 +515,8 @@ input[type='number'] {
     z-index: 6;
     background: var(--bg-secondary);
     border-radius: var(--radius-sub);
-    border: 1px solid color-mix(in oklab, var(--text) 20%, transparent);
-    box-shadow: 0 12px 28px color-mix(in oklab, var(--accent) 20%, transparent);
+    border: 2px solid color-mix(in oklab, var(--text) 20%, transparent);
+    box-shadow: none;
     padding: 6px;
     display: grid;
     gap: 6px;
@@ -521,18 +526,24 @@ input[type='number'] {
     width: 100%;
     background: transparent;
     color: var(--text);
-    border: 1px solid color-mix(in oklab, var(--text) 16%, transparent);
+    border: 2px solid color-mix(in oklab, var(--text) 16%, transparent);
     text-align: left;
 }
 
 .custom-select-option.active {
-    border: 2px solid var(--accent);
+    border-color: var(--accent);
 }
 
 .option-control {
     margin-right: 0 !important;
     flex-shrink: 0;
     pointer-events: none;
+}
+
+.option-remove {
+    width: auto;
+    min-width: auto;
+    margin-top: 0 !important;
 }
 
 .link-button {

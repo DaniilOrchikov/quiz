@@ -262,3 +262,38 @@ quizRouter.patch('/:quizId/questions/:questionId', requireRole('ORGANIZER'), asy
 
   return res.json(updated);
 });
+
+quizRouter.delete('/:quizId/questions/:questionId', requireRole('ORGANIZER'), async (req, res) => {
+  const question = await prisma.question.findUnique({
+    where: { id: req.params.questionId },
+    include: { quiz: true }
+  });
+
+  if (!question || question.quizId !== req.params.quizId) {
+    return res.status(404).json({ error: 'Question not found' });
+  }
+
+  if (question.quiz.createdById !== req.user.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.question.delete({
+      where: { id: question.id }
+    });
+
+    const remainingQuestions = await tx.question.findMany({
+      where: { quizId: req.params.quizId },
+      orderBy: { orderIndex: 'asc' }
+    });
+
+    await Promise.all(
+      remainingQuestions.map((item, index) => tx.question.update({
+        where: { id: item.id },
+        data: { orderIndex: index }
+      }))
+    );
+  });
+
+  return res.json({ ok: true });
+});

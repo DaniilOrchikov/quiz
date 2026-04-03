@@ -338,6 +338,20 @@ export function App() {
         }
     };
 
+    const deleteQuestionFromQuiz = async (quizId, questionId) => {
+        try {
+            await request(`/api/quizzes/${quizId}/questions/${questionId}`, 'DELETE', token);
+            const quiz = await request(`/api/quizzes/${quizId}`, 'GET', token);
+            setEditingQuiz(quiz);
+            await loadDashboard();
+            pushToast('Вопрос удален', 'success');
+            return true;
+        } catch (e) {
+            pushToast(toRuError(e.message), 'error');
+            return false;
+        }
+    };
+
     const publishQuiz = async (quizId) => {
         try {
             const updated = await request(`/api/quizzes/${quizId}`, 'PATCH', token, {status: 'PUBLISHED'});
@@ -448,6 +462,7 @@ export function App() {
                             {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onCreateQuiz={createQuiz}
                                                                        onAddQuestion={addQuestionToQuiz}
                                                                        onUpdateQuestion={updateQuestionInQuiz}
+                                                                       onDeleteQuestion={deleteQuestionFromQuiz}
                                                                        onPublish={publishQuiz}
                                                                        onBack={() => setView('quizzes')}/>}
                             {view === 'waiting' &&
@@ -562,7 +577,7 @@ function QuizListCard({quizzes, user, onLaunch, onEditQuiz, onDeleteQuiz, onCrea
     </div>;
 }
 
-function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, onPublish, onBack}) {
+function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onPublish, onBack}) {
     const [newQuiz, setNewQuiz] = useState({title: '', description: '', categoryNames: ''});
     const [question, setQuestion] = useState({
         type: 'TEXT',
@@ -577,6 +592,18 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
         ]
     });
     const [editingQuestionId, setEditingQuestionId] = useState(null);
+    const getEmptyQuestion = () => ({
+        type: 'TEXT',
+        prompt: '',
+        imageUrl: '',
+        allowMultiple: false,
+        points: 100,
+        timeLimitSec: 20,
+        options: [
+            {text: '', isCorrect: false},
+            {text: '', isCorrect: false}
+        ]
+    });
 
     const handleCreateQuiz = async (e) => {
         e.preventDefault();
@@ -640,18 +667,7 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
             }
 
             if (success) {
-                setQuestion({
-                    type: 'TEXT',
-                    prompt: '',
-                    imageUrl: '',
-                    allowMultiple: false,
-                    points: 100,
-                    timeLimitSec: 20,
-                    options: [
-                        {text: '', isCorrect: false},
-                        {text: '', isCorrect: false}
-                    ]
-                });
+                setQuestion(getEmptyQuestion());
                 setEditingQuestionId(null);
             }
         }}>
@@ -705,6 +721,17 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
                            onChange={(e) => changeOption(idx, {text: e.target.value})} required/>
                     <label><input type="checkbox" checked={option.isCorrect}
                                   onChange={(e) => changeOption(idx, {isCorrect: e.target.checked})}/> Правильный</label>
+                    <button
+                        type="button"
+                        className="ghost field-full option-remove"
+                        onClick={() => setQuestion((prev) => ({
+                            ...prev,
+                            options: prev.options.filter((_, optionIndex) => optionIndex !== idx)
+                        }))}
+                        disabled={question.options.length <= 2}
+                    >
+                        Удалить вариант
+                    </button>
                 </div>
             ))}
             <button type="button" className="ghost" onClick={() => setQuestion((prev) => ({
@@ -737,6 +764,15 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
                         options: q.options.map((option) => ({text: option.text, isCorrect: option.isCorrect}))
                     });
                 }}>Изменить
+                </button>
+                <button className="ghost" onClick={async () => {
+                    const success = await onDeleteQuestion(quiz.id, q.id);
+                    if (!success) return;
+                    if (editingQuestionId === q.id) {
+                        setEditingQuestionId(null);
+                        setQuestion(getEmptyQuestion());
+                    }
+                }}>Удалить
                 </button>
             </article>)}
         </div>
