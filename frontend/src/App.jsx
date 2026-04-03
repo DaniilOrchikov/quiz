@@ -31,6 +31,20 @@ async function request(path, method = 'GET', token, body) {
   return data;
 }
 
+function toRuError(message) {
+  const map = {
+    'Failed to fetch': 'Не удалось подключиться к серверу',
+    'NetworkError when attempting to fetch resource.': 'Ошибка сети при обращении к серверу',
+    'Invalid credentials': 'Неверный email или пароль',
+    Unauthorized: 'Требуется авторизация',
+    Forbidden: 'Недостаточно прав',
+    'Quiz not found': 'Квиз не найден',
+    'Session not found': 'Сессия не найдена',
+    'Question must have at least one correct option': 'Укажите хотя бы один правильный вариант ответа'
+  };
+  return map[message] || message || 'Произошла ошибка';
+}
+
 export function App() {
   const stored = readStoredState();
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
@@ -132,7 +146,7 @@ export function App() {
     });
 
     socket.on('connect_error', (error) => {
-      pushToast(`Ошибка WebSocket: ${error.message}`, 'error');
+      pushToast(`Ошибка WebSocket: ${toRuError(error.message)}`, 'error');
     });
 
     return () => {
@@ -231,7 +245,7 @@ export function App() {
       setView('profile');
       pushToast('Успешный вход в систему', 'success');
     } catch (e) {
-      pushToast(e.message, 'error');
+      pushToast(toRuError(e.message), 'error');
     }
   };
 
@@ -245,7 +259,7 @@ export function App() {
       setDashboard(dash);
       setQuizList(quizzes);
     } catch (e) {
-      pushToast(e.message, 'error');
+      pushToast(toRuError(e.message), 'error');
     }
   };
 
@@ -257,11 +271,11 @@ export function App() {
       setSession(data.session);
       setView('waiting');
       socketRef.current?.emit('session:join-room', { roomCode }, (ack) => {
-        if (!ack.ok) pushToast(ack.error, 'error');
+        if (!ack.ok) pushToast(toRuError(ack.error), 'error');
       });
       pushToast('Подключение к комнате выполнено', 'success');
     } catch (e) {
-      pushToast(e.message, 'error');
+      pushToast(toRuError(e.message), 'error');
     }
   };
 
@@ -273,7 +287,7 @@ export function App() {
       socketRef.current?.emit('session:join-room', { roomCode: created.roomCode });
       pushToast(`Сессия запущена. Код комнаты: ${created.roomCode}`, 'success');
     } catch (e) {
-      pushToast(e.message, 'error');
+      pushToast(toRuError(e.message), 'error');
     }
   };
 
@@ -286,7 +300,7 @@ export function App() {
       pushToast('Квиз создан. Добавьте вопросы и опубликуйте.', 'success');
       return created;
     } catch (e) {
-      pushToast(e.message, 'error');
+      pushToast(toRuError(e.message), 'error');
       return null;
     }
   };
@@ -300,7 +314,7 @@ export function App() {
       pushToast('Вопрос добавлен', 'success');
       return true;
     } catch (e) {
-      pushToast(e.message, 'error');
+      pushToast(toRuError(e.message), 'error');
       return false;
     }
   };
@@ -314,7 +328,7 @@ export function App() {
       pushToast('Вопрос обновлен', 'success');
       return true;
     } catch (e) {
-      pushToast(e.message, 'error');
+      pushToast(toRuError(e.message), 'error');
       return false;
     }
   };
@@ -327,7 +341,7 @@ export function App() {
       pushToast('Квиз опубликован', 'success');
       setView('quizzes');
     } catch (e) {
-      pushToast(e.message, 'error');
+      pushToast(toRuError(e.message), 'error');
     }
   };
 
@@ -338,7 +352,7 @@ export function App() {
       pushToast('Квиз удален из списка активных', 'success');
       setView('quizzes');
     } catch (e) {
-      pushToast(e.message, 'error');
+      pushToast(toRuError(e.message), 'error');
     }
   };
 
@@ -348,18 +362,18 @@ export function App() {
       setEditingQuiz(fullQuiz);
       setView('create-quiz');
     } catch (e) {
-      pushToast(e.message, 'error');
+      pushToast(toRuError(e.message), 'error');
     }
   };
 
-  const startQuiz = () => socketRef.current?.emit('session:start', { sessionId: session.id }, (ack) => !ack.ok && pushToast(ack.error, 'error'));
+  const startQuiz = () => socketRef.current?.emit('session:start', { sessionId: session.id }, (ack) => !ack.ok && pushToast(toRuError(ack.error), 'error'));
   const cancelQuiz = () => socketRef.current?.emit('session:cancel', { sessionId: session.id }, (ack) => {
-    if (!ack.ok) return pushToast(ack.error, 'error');
+    if (!ack.ok) return pushToast(toRuError(ack.error), 'error');
     setSession(null);
     setView('profile');
   });
   const leaveQuiz = () => socketRef.current?.emit('session:leave', { sessionId: session.id }, (ack) => {
-    if (!ack.ok) return pushToast(ack.error, 'error');
+    if (!ack.ok) return pushToast(toRuError(ack.error), 'error');
     setSession(null);
     setCurrentQuestion(null);
     setQuestionEndsAt(null);
@@ -377,7 +391,7 @@ export function App() {
     setView('auth');
   };
   const submitAnswer = (optionIds) => socketRef.current?.emit('session:submit-answer', { sessionId: session.id, questionId: currentQuestion.id, optionIds }, (ack) => {
-    if (!ack.ok) return pushToast(ack.error, 'error');
+    if (!ack.ok) return pushToast(toRuError(ack.error), 'error');
     pushToast('Ответ принят', 'success');
   });
 
@@ -434,40 +448,50 @@ function AuthCard({ onSubmit }) {
   const [isRegister, setRegister] = useState(false);
   const [step, setStep] = useState('init');
   const [form, setForm] = useState({ email: '', password: '', displayName: '', role: 'PARTICIPANT', code: '' });
+  const isWeakPassword = isRegister && step === 'init' && form.password.length > 0 && !/^(?=.*[a-z])(?=.*[A-Z]).{8,}$/.test(form.password);
   return <div>
-    <h2>{isRegister ? 'Регистрация' : 'Вход'}</h2>
-    <form className="stack" onSubmit={async (e) => {
+    <div className="stack centered auth-card">
+      <h2>{isRegister ? 'Регистрация' : 'Вход'}</h2>
+      <form className="stack centered field-full" onSubmit={async (e) => {
       e.preventDefault();
+      if (isRegister && step === 'init' && isWeakPassword) {
+        pushToast('Пароль должен быть не короче 8 символов и содержать строчные и заглавные буквы', 'error');
+        return;
+      }
       if (isRegister && step === 'init') {
         try {
           await request('/api/auth/register-init', 'POST', null, form);
           setStep('confirm');
           pushToast('Код подтверждения отправлен', 'info');
         } catch (error) {
-          pushToast(error.message, 'error');
+          pushToast(toRuError(error.message), 'error');
         }
         return;
       }
       onSubmit(form, isRegister);
     }}>
-      {isRegister && step === 'init' && <input placeholder="Имя" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} required />}
-      <input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-      {!isRegister && <input placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />}
+      {isRegister && step === 'init' && <input className="field-half" placeholder="Имя" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} required />}
+      <input className="field-half" placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+      {!isRegister && <input className="field-half" placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />}
       {isRegister && step === 'init' && <>
-        <input placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-        <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}><option value="PARTICIPANT">Участник</option><option value="ORGANIZER">Организатор</option></select>
+        <input className="field-half" placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+        {isWeakPassword && <p className="error-text">Простой пароль</p>}
+        <select className="field-half" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}><option value="PARTICIPANT">Участник</option><option value="ORGANIZER">Организатор</option></select>
       </>}
-      {isRegister && step === 'confirm' && <input placeholder="Код подтверждения из email" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required />}
+      {isRegister && step === 'confirm' && <input className="field-half" placeholder="Код подтверждения из email" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required />}
       <button>{isRegister && step === 'init' ? 'Отправить код' : 'Продолжить'}</button>
     </form>
-    <button className="ghost" onClick={() => { setRegister((s) => !s); setStep('init'); }}>{isRegister ? 'Уже есть аккаунт' : 'Создать аккаунт'}</button>
+      <button type="button" className="link-button" onClick={() => { setRegister((s) => !s); setStep('init'); }}>
+        {isRegister ? 'Уже есть аккаунт? Войти' : 'Создать аккаунт'}
+      </button>
+    </div>
   </div>;
 }
 
 function ProfileCard({ user, dashboard, onLogout }) {
   return <div className="stack centered">
     <h2>Профиль</h2>
-    <article className="tile profile-tile">
+    <article className="profile-info">
       <p><b>{user?.displayName}</b></p>
       <p>{user?.role}</p>
       {user?.role === 'ORGANIZER' && <p>Перейдите во вкладку «Квизы», чтобы создавать, редактировать, публиковать и запускать квизы.</p>}
@@ -479,13 +503,13 @@ function ProfileCard({ user, dashboard, onLogout }) {
 }
 
 function QuizListCard({ quizzes, user, onLaunch, onEditQuiz, onDeleteQuiz, onCreateQuizClick }) {
-  return <div className="stack">
+  return <div className="stack centered">
     <h2>Квизы</h2>
     {user?.role === 'ORGANIZER' && <button onClick={onCreateQuizClick}>Создать квиз</button>}
     {quizzes?.map((quiz) => (
-      <article key={quiz.id} className="tile">
-        <b>{quiz.title}</b>
-        <span>{quiz._count.questions} вопросов</span>
+      <article key={quiz.id} className="tile quiz-row">
+        <b className="quiz-col-title">{quiz.title}</b>
+        <span className="quiz-col-count">{quiz._count.questions} вопросов</span>
         <div className="row-actions">
           <button className="ghost" onClick={() => onEditQuiz(quiz.id)}>Редактировать</button>
           <button className="ghost" onClick={() => onDeleteQuiz(quiz.id)}>Удалить</button>
@@ -525,12 +549,14 @@ function CreateQuizCard({ quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, o
   };
 
   if (!quiz) {
-    return <div className="stack">
+    return <div className="stack centered">
       <h2>Создание квиза</h2>
-      <form className="stack" onSubmit={handleCreateQuiz}>
-        <input placeholder="Название квиза" value={newQuiz.title} onChange={(e) => setNewQuiz({ ...newQuiz, title: e.target.value })} required />
-        <input placeholder="Описание" value={newQuiz.description} onChange={(e) => setNewQuiz({ ...newQuiz, description: e.target.value })} />
-        <input placeholder="Категории через запятую" value={newQuiz.categoryNames} onChange={(e) => setNewQuiz({ ...newQuiz, categoryNames: e.target.value })} />
+      <form className="stack centered field-full" onSubmit={handleCreateQuiz}>
+        <input className="field-half" placeholder="Название квиза" value={newQuiz.title} onChange={(e) => setNewQuiz({ ...newQuiz, title: e.target.value })} required />
+        <div className="inline-fields">
+          <input placeholder="Описание" value={newQuiz.description} onChange={(e) => setNewQuiz({ ...newQuiz, description: e.target.value })} />
+          <input placeholder="Категории через запятую" value={newQuiz.categoryNames} onChange={(e) => setNewQuiz({ ...newQuiz, categoryNames: e.target.value })} />
+        </div>
         <button>Создать квиз</button>
       </form>
       <button className="ghost" onClick={onBack}>Назад</button>
@@ -550,11 +576,11 @@ function CreateQuizCard({ quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, o
     });
   };
 
-  return <div className="stack">
+  return <div className="stack centered">
     <h2>Редактор квиза: {quiz.title}</h2>
     <p>Статус: <b>{quiz.status}</b></p>
 
-    <form className="stack" onSubmit={async (e) => {
+    <form className="stack centered field-full" onSubmit={async (e) => {
       e.preventDefault();
       const payload = {
         ...question,
@@ -584,12 +610,15 @@ function CreateQuizCard({ quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, o
         setEditingQuestionId(null);
       }
     }}>
-      <select value={question.type} onChange={(e) => setQuestion({ ...question, type: e.target.value })}>
+      <select className="field-half" value={question.type} onChange={(e) => setQuestion({ ...question, type: e.target.value })}>
         <option value="TEXT">Текстовый вопрос</option>
         <option value="IMAGE">Вопрос с изображением</option>
       </select>
-      <input placeholder="Текст вопроса" value={question.prompt} onChange={(e) => setQuestion({ ...question, prompt: e.target.value })} required />
-      {question.type === 'IMAGE' && <input placeholder="URL изображения" value={question.imageUrl} onChange={(e) => setQuestion({ ...question, imageUrl: e.target.value })} required />}
+      <input className="field-half" placeholder="Текст вопроса" value={question.prompt} onChange={(e) => setQuestion({ ...question, prompt: e.target.value })} required />
+      {question.type === 'IMAGE' && <>
+        <input className="field-half" placeholder="URL изображения" value={question.imageUrl} onChange={(e) => setQuestion({ ...question, imageUrl: e.target.value })} required />
+        {question.imageUrl && <img className="preview field-half" src={question.imageUrl} alt="Превью изображения вопроса" />}
+      </>}
       <label><input type="checkbox" checked={question.allowMultiple} onChange={(e) => {
         const allowMultiple = e.target.checked;
         setQuestion((prev) => {
@@ -605,10 +634,10 @@ function CreateQuizCard({ quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, o
         });
       }} /> Множественный выбор</label>
       <label>Очки за вопрос
-        <input type="number" min="10" max="1000" value={question.points} onChange={(e) => setQuestion({ ...question, points: Number(e.target.value) })} />
+        <input className="field-half" type="number" min="10" max="1000" value={question.points} onChange={(e) => setQuestion({ ...question, points: Number(e.target.value) })} />
       </label>
       <label>Время на вопрос (секунды)
-        <input type="number" min="5" max="180" value={question.timeLimitSec} onChange={(e) => setQuestion({ ...question, timeLimitSec: Number(e.target.value) })} />
+        <input className="field-half" type="number" min="5" max="180" value={question.timeLimitSec} onChange={(e) => setQuestion({ ...question, timeLimitSec: Number(e.target.value) })} />
       </label>
 
       <h4>Варианты ответа</h4>
@@ -626,7 +655,7 @@ function CreateQuizCard({ quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, o
       </div>
     </form>
 
-    <div className="stack">
+    <div className="stack field-full">
       <h4>Текущие вопросы ({quiz.questions?.length || 0})</h4>
       {quiz.questions?.map((q) => <article key={q.id} className="tile"><b>{q.orderIndex + 1}. {q.prompt}</b><span>{q.points} очков</span><button className="ghost" onClick={() => {
         setEditingQuestionId(q.id);
@@ -682,7 +711,7 @@ function QuestionCard({ question, totalQuestions, onSubmit, onLeave, user, answe
     )}
     {user?.role === 'PARTICIPANT' && (
       <>
-        {!submitted && <div className="stack field-full">{question.options.map((o) => <button key={o.id} className={`option ${selected.includes(o.id) ? 'active' : ''}`} onClick={() => toggle(o.id)}>{o.text}</button>)}</div>}
+        {!submitted && <div className="stack field-full">{question.options.map((o) => <button key={o.id} className={`option option-answer ${selected.includes(o.id) ? 'active' : ''}`} onClick={() => toggle(o.id)}><span className="option-indicator" aria-hidden="true" />{o.text}</button>)}</div>}
         {!submitted
           ? <button className="field-half" onClick={() => { onSubmit(selected); setSubmitted(true); }} disabled={!selected.length}>Ответить</button>
           : <p>Ответ отправлен. Ответили: <b>{answerStats.answeredPlayers}</b> / {answerStats.totalPlayers}</p>}
@@ -692,5 +721,5 @@ function QuestionCard({ question, totalQuestions, onSubmit, onLeave, user, answe
 }
 
 function ResultsCard({ leaderboard, onBack }) {
-  return <div><h2>Лидерборд</h2><div className="stack">{leaderboard.map((row, i) => <article key={row.id} className="tile"><b>{i + 1}. {row.user.displayName}</b><span>{row.totalScore} очков</span></article>)}</div><button onClick={onBack}>В профиль</button></div>;
+  return <div className="stack centered"><h2>Лидерборд</h2><div className="stack field-full">{leaderboard.map((row, i) => <article key={row.id} className="tile"><b>{i + 1}. {row.user.displayName}</b><span>{row.totalScore} очков</span></article>)}</div><button onClick={onBack}>В профиль</button></div>;
 }
