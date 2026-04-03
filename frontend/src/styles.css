@@ -238,6 +238,8 @@ button {
     border: 2px solid transparent;
     width: 40%;
     align-self: center;
+    height: var(--control-height);
+    padding: 0 14px;
 }
 
 button.menu-link, button.theme-icon {
@@ -262,6 +264,30 @@ button.ghost {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+.question-item {
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.question-item-main {
+    display: grid;
+    gap: 4px;
+    text-align: left;
+}
+
+.question-item-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.compact-button {
+    width: auto;
+    min-width: auto;
+    margin-top: 0 !important;
 }
 
 .row-actions {
@@ -544,6 +570,18 @@ input[type='number'] {
     width: auto;
     min-width: auto;
     margin-top: 0 !important;
+}
+
+.icon-button {
+    width: var(--control-height);
+    min-width: var(--control-height);
+    padding: 0;
+    display: inline-grid;
+    place-items: center;
+}
+
+.icon-button .material-symbols-outlined {
+    font-size: 22px;
 }
 
 .link-button {
