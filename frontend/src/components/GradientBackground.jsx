@@ -9,8 +9,8 @@ export function GradientBackground({ disabled, theme }) {
     if (!canvasRef.current) return undefined;
 
     const colors = theme === 'dark'
-      ? ['#121212', '#1E1E2E', '#2258EE', '#2E0EC7', '#8B6AE6', '#4CB4BB']
-      : ['#FF5772', '#4CB4BB', '#FFC600', '#8B6AE6', '#2E0EC7', '#FF9A9E'];
+      ? ['#121212', '#121212', '#121212', '#2258EE']
+      : ['#ffffff', '#FF8A5C', '#FF8A5C', '#FF8A5C'];
 
     const gradient = new NeatGradient({
       ref: canvasRef.current,
