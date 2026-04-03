@@ -297,10 +297,12 @@ button.ghost {
     background: var(--bg-main);
     color: var(--text);
     width: 100%;
+    border: 1px solid color-mix(in oklab, var(--text) 22%, transparent);
+    transition: border-color .2s ease, border-width .2s ease;
 }
 
 .option.active {
-    border-color: var(--accent);
+    border: 2px solid var(--accent);
 }
 
 .option-answer {
@@ -406,8 +408,6 @@ input[type='checkbox'], input[type='radio'] {
 
 input[type='radio'] {
     border-radius: 50%;
-    width: 30px;
-    height: 30px;
 }
 
 input[type='checkbox']::before, input[type='radio']::before {
@@ -430,21 +430,6 @@ input[type='radio']::before {
     height: 24px;
     border-radius: 50%;
     background: var(--accent);
-}
-
-select {
-    appearance: none;
-    border-radius: var(--radius-sub);
-    min-height: var(--control-height);
-    background-image: linear-gradient(45deg, transparent 50%, var(--accent) 50%), linear-gradient(135deg, var(--accent) 50%, transparent 50%);
-    background-position: calc(100% - 20px) calc(1.2em + 2px), calc(100% - 14px) calc(1.2em + 2px);
-    background-size: 6px 6px, 6px 6px;
-    background-repeat: no-repeat;
-}
-
-select option {
-    background: var(--bg-secondary);
-    color: var(--text);
 }
 
 input[type='number'] {
@@ -492,6 +477,62 @@ input[type='number'] {
 
 .auth-card {
     justify-items: center;
+}
+
+.custom-select {
+    position: relative;
+}
+
+.custom-select-trigger {
+    width: 100%;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid color-mix(in oklab, var(--text) 22%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.custom-select-trigger.open {
+    border: 2px solid var(--accent);
+}
+
+.custom-select-chevron {
+    font-family: 'Material Symbols Outlined', sans-serif;
+    font-size: 22px;
+}
+
+.custom-select-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 6;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sub);
+    border: 1px solid color-mix(in oklab, var(--text) 20%, transparent);
+    box-shadow: 0 12px 28px color-mix(in oklab, var(--accent) 20%, transparent);
+    padding: 6px;
+    display: grid;
+    gap: 6px;
+}
+
+.custom-select-option {
+    width: 100%;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid color-mix(in oklab, var(--text) 16%, transparent);
+    text-align: left;
+}
+
+.custom-select-option.active {
+    border: 2px solid var(--accent);
+}
+
+.option-control {
+    margin-right: 0 !important;
+    flex-shrink: 0;
+    pointer-events: none;
 }
 
 .link-button {

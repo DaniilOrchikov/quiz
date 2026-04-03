@@ -506,11 +506,15 @@ function AuthCard({onSubmit}) {
                     <input className="field-half" placeholder="Пароль" type="password" value={form.password}
                            onChange={(e) => setForm({...form, password: e.target.value})} required/>
                     {isWeakPassword && <p className="error-text">Простой пароль</p>}
-                    <select className="field-half" value={form.role}
-                            onChange={(e) => setForm({...form, role: e.target.value})}>
-                        <option value="PARTICIPANT">Участник</option>
-                        <option value="ORGANIZER">Организатор</option>
-                    </select>
+                    <CustomSelect
+                        className="field-half"
+                        value={form.role}
+                        onChange={(value) => setForm({...form, role: value})}
+                        options={[
+                            {value: 'PARTICIPANT', label: 'Участник'},
+                            {value: 'ORGANIZER', label: 'Организатор'}
+                        ]}
+                    />
                 </>}
                 {isRegister && step === 'confirm' &&
                     <input className="field-half" placeholder="Код подтверждения из email" value={form.code}
@@ -651,11 +655,15 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
                 setEditingQuestionId(null);
             }
         }}>
-            <select className="field-half" value={question.type}
-                    onChange={(e) => setQuestion({...question, type: e.target.value})}>
-                <option value="TEXT">Текстовый вопрос</option>
-                <option value="IMAGE">Вопрос с изображением</option>
-            </select>
+            <CustomSelect
+                className="field-half"
+                value={question.type}
+                onChange={(value) => setQuestion({...question, type: value})}
+                options={[
+                    {value: 'TEXT', label: 'Текстовый вопрос'},
+                    {value: 'IMAGE', label: 'Вопрос с изображением'}
+                ]}
+            />
             <input className="field-half" placeholder="Текст вопроса" value={question.prompt}
                    onChange={(e) => setQuestion({...question, prompt: e.target.value})} required/>
             {question.type === 'IMAGE' && <>
@@ -764,7 +772,7 @@ function HistoryCard({dashboard, role}) {
 }
 
 function WaitingCard({session, user, onStart, onCancel, participantCount}) {
-    return <div className="stack"><h2>Ожидание начала</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>
+    return <div className="stack centered"><h2>Ожидание начала</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>
         {user?.role === 'ORGANIZER' && <p>Подключилось игроков: <b>{participantCount}</b></p>}
         {user?.role === 'ORGANIZER' && <div className="row-actions">
             <button onClick={onStart}>Начать квиз</button>
@@ -794,7 +802,9 @@ function QuestionCard({question, totalQuestions, onSubmit, onLeave, user, answer
                 {!submitted && <div className="stack field-full">{question.options.map((o) => <button key={o.id}
                                                                                                       className={"field-full " + `option option-answer ${selected.includes(o.id) ? 'active' : ''}`}
                                                                                                       onClick={() => toggle(o.id)}>
-                    <span className="option-indicator" aria-hidden="true"/>{o.text}</button>)}</div>}
+                    <input className="option-control" type={question.allowMultiple ? 'checkbox' : 'radio'}
+                           checked={selected.includes(o.id)} readOnly tabIndex={-1} aria-hidden="true"/>
+                    {o.text}</button>)}</div>}
                 {!submitted
                     ? <button className="field-half" onClick={() => {
                         onSubmit(selected);
@@ -813,4 +823,43 @@ function ResultsCard({leaderboard, onBack}) {
             <b>{i + 1}. {row.user.displayName}</b><span>{row.totalScore} очков</span></article>)}</div>
         <button onClick={onBack}>В профиль</button>
     </div>;
+}
+
+function CustomSelect({className = '', value, onChange, options}) {
+    const [isOpen, setIsOpen] = useState(false);
+    const rootRef = useRef(null);
+
+    useEffect(() => {
+        const handleOutsideClick = (event) => {
+            if (!rootRef.current?.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('pointerdown', handleOutsideClick);
+        return () => document.removeEventListener('pointerdown', handleOutsideClick);
+    }, []);
+
+    const selected = options.find((option) => option.value === value);
+
+    return (
+        <div ref={rootRef} className={`custom-select ${className}`}>
+            <button type="button" className={`custom-select-trigger ${isOpen ? 'open' : ''}`}
+                    onClick={() => setIsOpen((prev) => !prev)}>
+                <span>{selected?.label || 'Выберите значение'}</span>
+                <span className="custom-select-chevron" aria-hidden="true">expand_more</span>
+            </button>
+            {isOpen && <div className="custom-select-menu">
+                {options.map((option) => (
+                    <button key={option.value} type="button"
+                            className={`custom-select-option ${option.value === value ? 'active' : ''}`}
+                            onClick={() => {
+                                onChange(option.value);
+                                setIsOpen(false);
+                            }}>
+                        {option.label}
+                    </button>
+                ))}
+            </div>}
+        </div>
+    );
 }
