@@ -59,6 +59,7 @@ export function App() {
     const [secondsLeft, setSecondsLeft] = useState(0);
     const [questionEndsAt, setQuestionEndsAt] = useState(null);
     const [editingQuiz, setEditingQuiz] = useState(null);
+    const [createdDraftQuizId, setCreatedDraftQuizId] = useState(null);
     const [participantCount, setParticipantCount] = useState(0);
     const [answerStats, setAnswerStats] = useState(stored.answerStats || {
         answeredPlayers: 0,
@@ -300,6 +301,7 @@ export function App() {
         try {
             const created = await request('/api/quizzes', 'POST', token, payload);
             setEditingQuiz(created);
+            setCreatedDraftQuizId(created.id);
             setView('create-quiz');
             await loadDashboard();
             pushToast('Квиз создан. Добавьте вопросы и опубликуйте.', 'success');
@@ -356,6 +358,9 @@ export function App() {
         try {
             const updated = await request(`/api/quizzes/${quizId}`, 'PATCH', token, {status: 'PUBLISHED'});
             setEditingQuiz(updated);
+            if (createdDraftQuizId === quizId) {
+                setCreatedDraftQuizId(null);
+            }
             await loadDashboard();
             pushToast('Квиз опубликован', 'success');
             setView('quizzes');
@@ -367,6 +372,9 @@ export function App() {
     const deleteQuiz = async (quizId) => {
         try {
             await request(`/api/quizzes/${quizId}`, 'DELETE', token);
+            if (createdDraftQuizId === quizId) {
+                setCreatedDraftQuizId(null);
+            }
             await loadDashboard();
             pushToast('Квиз удален из списка активных', 'success');
             setView('quizzes');
@@ -379,10 +387,27 @@ export function App() {
         try {
             const fullQuiz = await request(`/api/quizzes/${quizId}`, 'GET', token);
             setEditingQuiz(fullQuiz);
+            setCreatedDraftQuizId(null);
             setView('create-quiz');
         } catch (e) {
             pushToast(toRuError(e.message), 'error');
         }
+    };
+
+    const backFromQuizEditor = async () => {
+        if (editingQuiz?.id && editingQuiz.id === createdDraftQuizId) {
+            try {
+                await request(`/api/quizzes/${editingQuiz.id}`, 'DELETE', token);
+                await loadDashboard();
+                pushToast('Черновик квиза удален', 'info');
+            } catch (e) {
+                pushToast(toRuError(e.message), 'error');
+                return;
+            }
+        }
+        setEditingQuiz(null);
+        setCreatedDraftQuizId(null);
+        setView('quizzes');
     };
 
     const startQuiz = () => socketRef.current?.emit('session:start', {sessionId: session.id}, (ack) => !ack.ok && pushToast(toRuError(ack.error), 'error'));
@@ -455,6 +480,7 @@ export function App() {
                                                                  onEditQuiz={openQuizEditor} onDeleteQuiz={deleteQuiz}
                                                                  onCreateQuizClick={() => {
                                                                      setEditingQuiz(null);
+                                                                     setCreatedDraftQuizId(null);
                                                                      setView('create-quiz');
                                                                  }}/>}
                             {view === 'join' && <JoinCard onJoin={joinByCode}/>}
@@ -464,7 +490,7 @@ export function App() {
                                                                        onUpdateQuestion={updateQuestionInQuiz}
                                                                        onDeleteQuestion={deleteQuestionFromQuiz}
                                                                        onPublish={publishQuiz}
-                                                                       onBack={() => setView('quizzes')}/>}
+                                                                       onBack={backFromQuizEditor}/>}
                             {view === 'waiting' &&
                                 <WaitingCard session={session} user={user} onStart={startQuiz} onCancel={cancelQuiz}
                                              participantCount={participantCount}/>}
@@ -571,7 +597,10 @@ function QuizListCard({quizzes, user, onLaunch, onEditQuiz, onDeleteQuiz, onCrea
                 <b className="quiz-col-title">{quiz.title}</b>
                 <span className="quiz-col-count">{quiz._count.questions} вопросов</span>
                 <button className="ghost field-full" onClick={() => onEditQuiz(quiz.id)}>Ред.</button>
-                <button className="ghost field-full" onClick={() => onDeleteQuiz(quiz.id)}>Удалить</button>
+                <button className="ghost field-full icon-button" onClick={() => onDeleteQuiz(quiz.id)}
+                        aria-label="Удалить квиз" title="Удалить квиз">
+                    <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                </button>
                 <button className="field-full" onClick={() => onLaunch(quiz.id)}>Запустить</button>
             </article>
         ))}
@@ -724,14 +753,16 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
                            onChange={(e) => changeOption(idx, {text: e.target.value})} required/>
                     <button
                         type="button"
-                        className="ghost field-full option-remove"
+                        className="ghost field-full icon-button option-remove"
                         onClick={() => setQuestion((prev) => ({
                             ...prev,
                             options: prev.options.filter((_, optionIndex) => optionIndex !== idx)
                         }))}
                         disabled={question.options.length <= 2}
+                        aria-label={`Удалить вариант ${idx + 1}`}
+                        title={`Удалить вариант ${idx + 1}`}
                     >
-                        Удалить
+                        <span className="material-symbols-outlined" aria-hidden="true">delete</span>
                     </button>
                 </div>
             ))}
@@ -751,31 +782,36 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
 
         <div className="stack field-full">
             <h4>Текущие вопросы ({quiz.questions?.length || 0})</h4>
-            {quiz.questions?.map((q) => <article key={q.id} className="tile">
-                <p><b>{q.orderIndex + 1}. {q.prompt}</b></p>
-                <p>{q.points} очков</p>
-                <button className="ghost" onClick={() => {
-                    setEditingQuestionId(q.id);
-                    setQuestion({
-                        type: q.type,
-                        prompt: q.prompt,
-                        imageUrl: q.imageUrl || '',
-                        allowMultiple: q.allowMultiple,
-                        points: q.points,
-                        timeLimitSec: q.timeLimitSec || 20,
-                        options: q.options.map((option) => ({text: option.text, isCorrect: option.isCorrect}))
-                    });
-                }}>Изменить
-                </button>
-                <button className="ghost" onClick={async () => {
-                    const success = await onDeleteQuestion(quiz.id, q.id);
-                    if (!success) return;
-                    if (editingQuestionId === q.id) {
-                        setEditingQuestionId(null);
-                        setQuestion(getEmptyQuestion());
-                    }
-                }}>Удалить
-                </button>
+            {quiz.questions?.map((q) => <article key={q.id} className="tile question-item">
+                <div className="question-item-main">
+                    <b>{q.orderIndex + 1}. {q.prompt}</b>
+                    <span>{q.points} очков</span>
+                </div>
+                <div className="question-item-actions">
+                    <button className="ghost compact-button" onClick={() => {
+                        setEditingQuestionId(q.id);
+                        setQuestion({
+                            type: q.type,
+                            prompt: q.prompt,
+                            imageUrl: q.imageUrl || '',
+                            allowMultiple: q.allowMultiple,
+                            points: q.points,
+                            timeLimitSec: q.timeLimitSec || 20,
+                            options: q.options.map((option) => ({text: option.text, isCorrect: option.isCorrect}))
+                        });
+                    }}>Изменить
+                    </button>
+                    <button className="ghost icon-button compact-button" onClick={async () => {
+                        const success = await onDeleteQuestion(quiz.id, q.id);
+                        if (!success) return;
+                        if (editingQuestionId === q.id) {
+                            setEditingQuestionId(null);
+                            setQuestion(getEmptyQuestion());
+                        }
+                    }} aria-label="Удалить вопрос" title="Удалить вопрос">
+                        <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                    </button>
+                </div>
             </article>)}
         </div>
 
