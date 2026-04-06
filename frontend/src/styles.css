@@ -13,6 +13,7 @@
     --space-sm: 8px;
     --space-md: 12px;
     --space-lg: 20px;
+    --field-border: color-mix(in oklab, var(--text) 22%, transparent);
 }
 
 body[data-theme='light'] {
@@ -184,6 +185,12 @@ body, html, #root {
     overflow: hidden;
 }
 
+.content.auth-mode {
+    min-height: 100vh;
+    padding-top: 20px;
+    place-items: center;
+}
+
 .card {
     width: var(--layout-width);
     max-height: min(82vh, 860px);
@@ -212,7 +219,7 @@ body, html, #root {
 }
 
 input, select, button {
-    border: 1px solid color-mix(in oklab, var(--text) 22%, transparent);
+    border: 1px solid var(--field-border);
     border-radius: var(--radius-sub);
     padding: 12px 14px;
     font-size: var(--font-md);
@@ -294,9 +301,10 @@ button.ghost {
 
 .option {
     text-align: left;
-    background: var(--bg-main);
+    background: transparent;
     color: var(--text);
     width: 100%;
+    border: 1px solid var(--field-border);
 }
 
 .option.active {
@@ -312,24 +320,19 @@ button.ghost {
 .option-indicator {
     width: 24px;
     height: 24px;
-    border: 2px solid var(--accent);
+    border: 2px solid var(--field-border);
     border-radius: 4px;
     display: inline-grid;
     place-items: center;
     flex-shrink: 0;
-}
-
-.option-indicator::before {
-    content: 'check';
-    font-family: 'Material Symbols Outlined';
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
     color: var(--accent);
-    font-size: 16px;
-    transform: scale(0);
-    transition: transform .2s ease;
 }
 
-.option-answer.active .option-indicator::before {
-    transform: scale(1);
+.option-indicator.radio {
+    border-radius: 50%;
 }
 
 .toast-hub {
@@ -494,6 +497,28 @@ input[type='number'] {
     justify-items: center;
 }
 
+.history-group {
+    display: grid;
+    gap: 10px;
+}
+
+.history-group-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.history-games-list {
+    width: 100%;
+}
+
+.muted {
+    margin: 0;
+    opacity: .75;
+    font-size: var(--font-sm);
+}
+
 .link-button {
     width: auto !important;
     min-height: auto;
@@ -516,6 +541,10 @@ input[type='number'] {
 
     .card {
         width: calc(100vw - 24px);
+    }
+
+    .content.auth-mode .card {
+        width: min(420px, calc(100vw - 24px)) !important;
     }
 
     .field-half {
