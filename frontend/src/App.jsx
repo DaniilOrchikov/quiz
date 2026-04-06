@@ -512,19 +512,19 @@ export function App() {
 
 function AuthCard({onSubmit}) {
     const [isRegister, setRegister] = useState(false);
-    const [step, setStep] = useState('init');
+    const [authStep, setStep] = useState('init');
     const [form, setForm] = useState({email: '', password: '', displayName: '', role: 'PARTICIPANT', code: ''});
-    const isWeakPassword = isRegister && step === 'init' && form.password.length > 0 && !/^(?=.*[a-z])(?=.*[A-Z]).{8,}$/.test(form.password);
+    const isWeakPassword = isRegister && authStep === 'init' && form.password.length > 0 && !/^(?=.*[a-z])(?=.*[A-Z]).{8,}$/.test(form.password);
     return <div>
         <div className="stack centered auth-card">
             <h2>{isRegister ? 'Регистрация' : 'Вход'}</h2>
             <form className="stack centered field-full" onSubmit={async (e) => {
                 e.preventDefault();
-                if (isRegister && step === 'init' && isWeakPassword) {
+                if (isRegister && authStep === 'init' && isWeakPassword) {
                     pushToast('Пароль должен быть не короче 8 символов и содержать строчные и заглавные буквы', 'error');
                     return;
                 }
-                if (isRegister && step === 'init') {
+                if (isRegister && authStep === 'init') {
                     try {
                         await request('/api/auth/register-init', 'POST', null, form);
                         setStep('confirm');
@@ -536,14 +536,14 @@ function AuthCard({onSubmit}) {
                 }
                 onSubmit(form, isRegister);
             }}>
-                {isRegister && step === 'init' &&
+                {isRegister && authStep === 'init' &&
                     <input className="field-half" placeholder="Имя" value={form.displayName}
                            onChange={(e) => setForm({...form, displayName: e.target.value})} required/>}
                 <input className="field-half" placeholder="Email" type="email" value={form.email}
                        onChange={(e) => setForm({...form, email: e.target.value})} required/>
                 {!isRegister && <input className="field-half" placeholder="Пароль" type="password" value={form.password}
                                        onChange={(e) => setForm({...form, password: e.target.value})} required/>}
-                {isRegister && step === 'init' && <>
+                {isRegister && authStep === 'init' && <>
                     <input className="field-half" placeholder="Пароль" type="password" value={form.password}
                            onChange={(e) => setForm({...form, password: e.target.value})} required/>
                     {isWeakPassword && <p className="error-text">Простой пароль</p>}
@@ -557,10 +557,10 @@ function AuthCard({onSubmit}) {
                         ]}
                     />
                 </>}
-                {isRegister && step === 'confirm' &&
+                {isRegister && authStep === 'confirm' &&
                     <input className="field-half" placeholder="Код подтверждения" value={form.code}
                            onChange={(e) => setForm({...form, code: e.target.value})} required/>}
-                <button>{isRegister && step === 'init' ? 'Отправить код' : 'Продолжить'}</button>
+                <button>{isRegister && authStep === 'init' ? 'Отправить код' : 'Продолжить'}</button>
             </form>
             <button type="button" className="link-button" onClick={() => {
                 setRegister((s) => !s);
