@@ -403,13 +403,20 @@ export function App() {
         setQuestionEndsAt(null);
         setView('auth');
     };
-    const submitAnswer = (optionIds) => socketRef.current?.emit('session:submit-answer', {
-        sessionId: session.id,
-        questionId: currentQuestion.id,
-        optionIds
-    }, (ack) => {
-        if (!ack.ok) return pushToast(toRuError(ack.error), 'error');
-        pushToast('Ответ принят', 'success');
+    const submitAnswer = (optionIds) => new Promise((resolve) => {
+        socketRef.current?.emit('session:submit-answer', {
+            sessionId: session.id,
+            questionId: currentQuestion.id,
+            optionIds
+        }, (ack) => {
+            if (!ack.ok) {
+                pushToast(toRuError(ack.error), 'error');
+                resolve(false);
+                return;
+            }
+            pushToast('Ответ принят', 'success');
+            resolve(true);
+        });
     });
 
     const activeQuiz = view === 'quiz';
@@ -483,6 +490,7 @@ export function App() {
                             {view === 'quiz' && <QuestionCard question={currentQuestion}
                                                               totalQuestions={session?.quiz?.questionCount || 0}
                                                               onSubmit={submitAnswer} onLeave={leaveQuiz} user={user}
+                                                              secondsLeft={secondsLeft}
                                                               answerStats={answerStats}
                                                               onContentChange={recalculateCardHeight}/>}
                             {view === 'results' &&
