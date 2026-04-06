@@ -232,14 +232,16 @@ export function App() {
     const onLogin = async (payload, isRegister) => {
         try {
             if (isRegister) {
-                const data = await request('/api/auth/register-confirm', 'POST', null, {
+                const data = await request('/api/auth/register', 'POST', null, {
                     email: payload.email,
-                    code: payload.code
+                    password: payload.password,
+                    displayName: payload.displayName,
+                    role: payload.role
                 });
                 setToken(data.token);
                 setUser(data.user);
                 setView('profile');
-                pushToast('Аккаунт подтвержден и создан', 'success');
+                pushToast('Аккаунт создан', 'success');
                 return;
             }
             const data = await request('/api/auth/login', 'POST', null, payload);
@@ -405,11 +407,13 @@ export function App() {
     });
 
     const activeQuiz = view === 'quiz';
+    const isAuthView = view === 'auth';
+    const cardOffsetY = isAuthView ? 0 : -64;
 
     return (
         <div className={`app ${theme} ${uiReady ? 'ready' : 'no-transitions'}`}>
             <GradientBackground disabled={activeQuiz} theme={theme}/>
-            <Header
+            {!isAuthView && <Header
                 user={user}
                 session={session}
                 secondsLeft={secondsLeft}
@@ -420,11 +424,14 @@ export function App() {
                 onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
                 theme={theme}
                 onLeaveQuiz={leaveQuiz}
-            />
+            />}
 
-            <main className="content">
-                <motion.section className="card" animate={{height: cardHeight || 'auto'}}
-                                transition={{type: 'spring', stiffness: 120, damping: 22}}>
+            <main className={`content ${isAuthView ? 'auth-content' : ''}`}>
+                <motion.section
+                    className={`card ${isAuthView ? 'compact' : ''}`}
+                    animate={{height: cardHeight || 'auto', y: cardOffsetY}}
+                    transition={{type: 'spring', stiffness: 120, damping: 22}}
+                >
                     <AnimatePresence mode="wait">
                         <motion.div
                             ref={cardContentRef}
@@ -458,7 +465,9 @@ export function App() {
                                                               onSubmit={submitAnswer} onLeave={leaveQuiz} user={user}
                                                               answerStats={answerStats}/>}
                             {view === 'results' &&
-                                <ResultsCard leaderboard={leaderboard} onBack={() => setView('profile')}/>}
+                                <ResultsCard leaderboard={leaderboard}
+                                             onBack={() => setView(user?.role === 'ORGANIZER' ? 'quizzes' : 'join')}
+                                             user={user}/>}
                         </motion.div>
                     </AnimatePresence>
                 </motion.section>
@@ -471,38 +480,27 @@ export function App() {
 
 function AuthCard({onSubmit}) {
     const [isRegister, setRegister] = useState(false);
-    const [step, setStep] = useState('init');
-    const [form, setForm] = useState({email: '', password: '', displayName: '', role: 'PARTICIPANT', code: ''});
-    const isWeakPassword = isRegister && step === 'init' && form.password.length > 0 && !/^(?=.*[a-z])(?=.*[A-Z]).{8,}$/.test(form.password);
+    const [form, setForm] = useState({email: '', password: '', displayName: '', role: 'PARTICIPANT'});
+    const isWeakPassword = isRegister && form.password.length > 0 && !/^(?=.*[a-z])(?=.*[A-Z]).{8,}$/.test(form.password);
     return <div>
         <div className="stack centered auth-card">
             <h2>{isRegister ? 'Регистрация' : 'Вход'}</h2>
             <form className="stack centered field-full" onSubmit={async (e) => {
                 e.preventDefault();
-                if (isRegister && step === 'init' && isWeakPassword) {
+                if (isRegister && isWeakPassword) {
                     pushToast('Пароль должен быть не короче 8 символов и содержать строчные и заглавные буквы', 'error');
-                    return;
-                }
-                if (isRegister && step === 'init') {
-                    try {
-                        await request('/api/auth/register-init', 'POST', null, form);
-                        setStep('confirm');
-                        pushToast('Код подтверждения отправлен', 'info');
-                    } catch (error) {
-                        pushToast(toRuError(error.message), 'error');
-                    }
                     return;
                 }
                 onSubmit(form, isRegister);
             }}>
-                {isRegister && step === 'init' &&
+                {isRegister &&
                     <input className="field-half" placeholder="Имя" value={form.displayName}
                            onChange={(e) => setForm({...form, displayName: e.target.value})} required/>}
                 <input className="field-half" placeholder="Email" type="email" value={form.email}
                        onChange={(e) => setForm({...form, email: e.target.value})} required/>
                 {!isRegister && <input className="field-half" placeholder="Пароль" type="password" value={form.password}
                                        onChange={(e) => setForm({...form, password: e.target.value})} required/>}
-                {isRegister && step === 'init' && <>
+                {isRegister && <>
                     <input className="field-half" placeholder="Пароль" type="password" value={form.password}
                            onChange={(e) => setForm({...form, password: e.target.value})} required/>
                     {isWeakPassword && <p className="error-text">Простой пароль</p>}
@@ -512,14 +510,10 @@ function AuthCard({onSubmit}) {
                         <option value="ORGANIZER">Организатор</option>
                     </select>
                 </>}
-                {isRegister && step === 'confirm' &&
-                    <input className="field-half" placeholder="Код подтверждения из email" value={form.code}
-                           onChange={(e) => setForm({...form, code: e.target.value})} required/>}
-                <button>{isRegister && step === 'init' ? 'Отправить код' : 'Продолжить'}</button>
+                <button>Продолжить</button>
             </form>
             <button type="button" className="link-button" onClick={() => {
                 setRegister((s) => !s);
-                setStep('init');
             }}>
                 {isRegister ? 'Уже есть аккаунт? Войти' : 'Создать аккаунт'}
             </button>
@@ -742,7 +736,8 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
 
 function JoinCard({onJoin}) {
     const [roomCode, setRoomCode] = useState('');
-    return <div className="stack centered"><h2>Присоединиться к квизу</h2>
+    return <div className="stack centered"><h2>Войти в игру</h2>
+        <p>Код квиза спросите у организатора</p>
         <form className="stack field-full centered" onSubmit={(e) => {
             e.preventDefault();
             onJoin(roomCode.trim().toUpperCase());
@@ -754,17 +749,40 @@ function JoinCard({onJoin}) {
 }
 
 function HistoryCard({dashboard, role}) {
+    const groupedParticipations = (dashboard?.participations || []).reduce((acc, participation) => {
+        const quizId = participation.session.quiz.id;
+        if (!acc[quizId]) {
+            acc[quizId] = {
+                quizId,
+                quizTitle: participation.session.quiz.title,
+                games: []
+            };
+        }
+        acc[quizId].games.push(participation);
+        return acc;
+    }, {});
+
     return <div className="stack centered"><h2>История</h2>
         <div className="stack field-full">{role === 'ORGANIZER' ? dashboard?.quizzes?.map((q) => <article
             className="tile" key={q.id}>{q.title}<span>Сессий: {q._count.sessions}</span>
-        </article>) : dashboard?.participations?.map((p) => <article className="tile"
-                                                                     key={p.id}>{p.session.quiz.title}<span>{p.totalScore} очков</span>
-        </article>)}</div>
+        </article>) : Object.values(groupedParticipations).map((group) => <details className="history-group"
+                                                                                    key={group.quizId}>
+            <summary className="tile">
+                <b>{group.quizTitle}</b>
+                <span>Игр: {group.games.length}</span>
+            </summary>
+            <div className="stack history-group-content">
+                {group.games.map((game) => <article className="tile" key={game.id}>
+                    <span>Комната: {game.session.roomCode}</span>
+                    <span>{game.totalScore} очков</span>
+                </article>)}
+            </div>
+        </details>)}</div>
     </div>;
 }
 
 function WaitingCard({session, user, onStart, onCancel, participantCount}) {
-    return <div className="stack"><h2>Ожидание начала</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>
+    return <div className="stack"><h2>{session?.quiz?.title || 'Квиз'}</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>
         {user?.role === 'ORGANIZER' && <p>Подключилось игроков: <b>{participantCount}</b></p>}
         {user?.role === 'ORGANIZER' && <div className="row-actions">
             <button onClick={onStart}>Начать квиз</button>
@@ -794,7 +812,8 @@ function QuestionCard({question, totalQuestions, onSubmit, onLeave, user, answer
                 {!submitted && <div className="stack field-full">{question.options.map((o) => <button key={o.id}
                                                                                                       className={"field-full " + `option option-answer ${selected.includes(o.id) ? 'active' : ''}`}
                                                                                                       onClick={() => toggle(o.id)}>
-                    <span className="option-indicator" aria-hidden="true"/>{o.text}</button>)}</div>}
+                    <span className={`option-indicator ${question.allowMultiple ? 'checkbox' : 'radio'} ${selected.includes(o.id) ? 'checked' : ''}`}
+                          aria-hidden="true"/>{o.text}</button>)}</div>}
                 {!submitted
                     ? <button className="field-half" onClick={() => {
                         onSubmit(selected);
@@ -807,10 +826,11 @@ function QuestionCard({question, totalQuestions, onSubmit, onLeave, user, answer
     </div>;
 }
 
-function ResultsCard({leaderboard, onBack}) {
+function ResultsCard({leaderboard, onBack, user}) {
+    const backLabel = user?.role === 'ORGANIZER' ? 'К квизам' : 'Присоединиться';
     return <div className="stack centered"><h2>Лидерборд</h2>
         <div className="stack field-full">{leaderboard.map((row, i) => <article key={row.id} className="tile">
             <b>{i + 1}. {row.user.displayName}</b><span>{row.totalScore} очков</span></article>)}</div>
-        <button onClick={onBack}>В профиль</button>
+        <button onClick={onBack}>{backLabel}</button>
     </div>;
 }
