@@ -28,3 +28,15 @@ npm run dev
 ```
 
 По умолчанию frontend ожидает backend на `http://localhost:4000`.
+
+## Запуск через Docker Compose
+
+```bash
+docker compose up --build
+```
+
+Сервисы:
+- frontend: `http://localhost:5173`
+- backend: `http://localhost:4000`
+
+`docker-compose.yml` автоматически запускает Prisma schema push для SQLite внутри контейнера backend.
