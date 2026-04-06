@@ -558,7 +558,7 @@ function AuthCard({onSubmit}) {
                     />
                 </>}
                 {isRegister && step === 'confirm' &&
-                    <input className="field-half" placeholder="Код подтверждения из email" value={form.code}
+                    <input className="field-half" placeholder="Код подтверждения" value={form.code}
                            onChange={(e) => setForm({...form, code: e.target.value})} required/>}
                 <button>{isRegister && step === 'init' ? 'Отправить код' : 'Продолжить'}</button>
             </form>
@@ -659,7 +659,7 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
                     <input placeholder="Категории через запятую" value={newQuiz.categoryNames}
                            onChange={(e) => setNewQuiz({...newQuiz, categoryNames: e.target.value})}/>
                 </div>
-                <button>Создать квиз</button>
+                <button style={{marginBottom: -20}}>Создать квиз</button>
             </form>
             <button className="ghost" onClick={onBack}>Назад</button>
         </div>;
@@ -701,23 +701,35 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
                 setEditingQuestionId(null);
             }
         }}>
-            <CustomSelect
-                className="field-half"
-                value={question.type}
-                onChange={(value) => setQuestion({...question, type: value})}
-                options={[
-                    {value: 'TEXT', label: 'Текстовый вопрос'},
-                    {value: 'IMAGE', label: 'Вопрос с изображением'}
-                ]}
-            />
-            <input className="field-half" placeholder="Текст вопроса" value={question.prompt}
-                   onChange={(e) => setQuestion({...question, prompt: e.target.value})} required/>
+            <div className="inline-fields" style={{display: 'flex'}}>
+                <CustomSelect
+                    className="field-full"
+                    value={question.type}
+                    onChange={(value) => setQuestion({...question, type: value})}
+                    options={[
+                        {value: 'TEXT', label: 'Текстовый вопрос'},
+                        {value: 'IMAGE', label: 'Вопрос с изображением'}
+                    ]}
+                />
+                <input className="field-full" placeholder="Текст вопроса" value={question.prompt}
+                       onChange={(e) => setQuestion({...question, prompt: e.target.value})} required/>
+            </div>
             {question.type === 'IMAGE' && <>
-                <input className="field-half" placeholder="URL изображения" value={question.imageUrl}
+                <input className="field-full" placeholder="URL изображения" value={question.imageUrl}
                        onChange={(e) => setQuestion({...question, imageUrl: e.target.value})} required/>
-                {question.imageUrl &&
-                    <img className="preview field-half" src={question.imageUrl} alt="Превью изображения вопроса"/>}
             </>}
+            {question.imageUrl &&
+                <img className="preview field-half" src={question.imageUrl} alt="Превью изображения вопроса"/>}
+            <div className="field-full" style={{display: 'flex', justifyContent: 'space-evenly'}}>
+                <label className="number-input-label">Очки за вопрос
+                    <input type="number" min="10" max="1000" value={question.points}
+                           onChange={(e) => setQuestion({...question, points: Number(e.target.value)})}/>
+                </label>
+                <label className="number-input-label">Время на вопрос
+                    <input type="number" min="5" max="180" value={question.timeLimitSec}
+                           onChange={(e) => setQuestion({...question, timeLimitSec: Number(e.target.value)})}/>
+                </label>
+            </div>
             <label><input type="checkbox" checked={question.allowMultiple} onChange={(e) => {
                 const allowMultiple = e.target.checked;
                 setQuestion((prev) => {
@@ -735,14 +747,6 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
                     };
                 });
             }}/> Множественный выбор</label>
-            <label>Очки за вопрос
-                <input className="field-half" type="number" min="10" max="1000" value={question.points}
-                       onChange={(e) => setQuestion({...question, points: Number(e.target.value)})}/>
-            </label>
-            <label>Время на вопрос (секунды)
-                <input className="field-half" type="number" min="5" max="180" value={question.timeLimitSec}
-                       onChange={(e) => setQuestion({...question, timeLimitSec: Number(e.target.value)})}/>
-            </label>
 
             <h4>Варианты ответа</h4>
             {question.options.map((option, idx) => (
@@ -782,36 +786,31 @@ function CreateQuizCard({quiz, onCreateQuiz, onAddQuestion, onUpdateQuestion, on
 
         <div className="stack field-full">
             <h4>Текущие вопросы ({quiz.questions?.length || 0})</h4>
-            {quiz.questions?.map((q) => <article key={q.id} className="tile question-item">
-                <div className="question-item-main">
-                    <b>{q.orderIndex + 1}. {q.prompt}</b>
-                    <span>{q.points} очков</span>
-                </div>
-                <div className="question-item-actions">
-                    <button className="ghost compact-button" onClick={() => {
-                        setEditingQuestionId(q.id);
-                        setQuestion({
-                            type: q.type,
-                            prompt: q.prompt,
-                            imageUrl: q.imageUrl || '',
-                            allowMultiple: q.allowMultiple,
-                            points: q.points,
-                            timeLimitSec: q.timeLimitSec || 20,
-                            options: q.options.map((option) => ({text: option.text, isCorrect: option.isCorrect}))
-                        });
-                    }}>Изменить
-                    </button>
-                    <button className="ghost icon-button compact-button" onClick={async () => {
-                        const success = await onDeleteQuestion(quiz.id, q.id);
-                        if (!success) return;
-                        if (editingQuestionId === q.id) {
-                            setEditingQuestionId(null);
-                            setQuestion(getEmptyQuestion());
-                        }
-                    }} aria-label="Удалить вопрос" title="Удалить вопрос">
-                        <span className="material-symbols-outlined" aria-hidden="true">delete</span>
-                    </button>
-                </div>
+            {quiz.questions?.map((q) => <article key={q.id} className="question-tile">
+                <b className={"quiz-col-title"}>{q.orderIndex + 1}. {q.prompt}</b><span>{q.points} очков</span>
+                <button className="ghost" onClick={() => {
+                    setEditingQuestionId(q.id);
+                    setQuestion({
+                        type: q.type,
+                        prompt: q.prompt,
+                        imageUrl: q.imageUrl || '',
+                        allowMultiple: q.allowMultiple,
+                        points: q.points,
+                        timeLimitSec: q.timeLimitSec || 20,
+                        options: q.options.map((option) => ({text: option.text, isCorrect: option.isCorrect}))
+                    });
+                }}>Ред.
+                </button>
+                <button className="ghost icon-button" onClick={async () => {
+                    const success = await onDeleteQuestion(quiz.id, q.id);
+                    if (!success) return;
+                    if (editingQuestionId === q.id) {
+                        setEditingQuestionId(null);
+                        setQuestion(getEmptyQuestion());
+                    }
+                }} aria-label={`Удалить вопрос ${q.orderIndex + 1}`} title={`Удалить вопрос ${q.orderIndex + 1}`}>
+                    <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                </button>
             </article>)}
         </div>
 
@@ -837,11 +836,13 @@ function JoinCard({onJoin}) {
 
 function HistoryCard({dashboard, role}) {
     return <div className="stack centered"><h2>История</h2>
-        <div className="stack field-full">{role === 'ORGANIZER' ? dashboard?.quizzes?.map((q) => <article
-            className="tile" key={q.id}>{q.title}<span>Сессий: {q._count.sessions}</span>
-        </article>) : dashboard?.participations?.map((p) => <article className="tile"
-                                                                     key={p.id}>{p.session.quiz.title}<span>{p.totalScore} очков</span>
-        </article>)}</div>
+        <div className="stack field-full">{role === 'ORGANIZER' ? dashboard?.quizzes?.map((q) =>
+            <article
+                className="tile" key={q.id}>{q.title}<span>Сессий: {q._count.sessions}</span>
+            </article>) : dashboard?.participations?.map((p) =>
+            <article className="tile"
+                     key={p.id}>{p.session.quiz.title}<span>{p.totalScore} очков</span>
+            </article>)}</div>
     </div>;
 }
 
