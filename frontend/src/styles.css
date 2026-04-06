@@ -405,16 +405,6 @@ button.ghost {
     border-radius: 50%;
 }
 
-.option-native-control::before {
-    content: '';
-    width: 10px;
-    height: 10px;
-    border-radius: inherit;
-    background: var(--accent);
-    transform: scale(0);
-    transition: transform .15s ease;
-}
-
 .option-native-control:checked {
     border-color: var(--accent);
 }
