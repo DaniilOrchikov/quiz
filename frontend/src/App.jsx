@@ -1,4 +1,4 @@
-import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {AnimatePresence, motion} from 'framer-motion';
 import {io} from 'socket.io-client';
 import {Header} from './components/Header.jsx';
@@ -73,7 +73,12 @@ export function App() {
     const socketRef = useRef(null);
     const cardContentRef = useRef(null);
     const [cardHeight, setCardHeight] = useState(null);
+    const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
     const [uiReady, setUiReady] = useState(false);
+    const recalculateCardHeight = useCallback(() => {
+        if (!cardContentRef.current) return;
+        setCardHeight(Math.min(cardContentRef.current.scrollHeight + 2, window.innerHeight * 0.82));
+    }, []);
 
     useEffect(() => {
         document.body.dataset.theme = theme;
@@ -212,16 +217,22 @@ export function App() {
 
     useLayoutEffect(() => {
         if (!cardContentRef.current) return;
-        const calculate = () => setCardHeight(Math.min(cardContentRef.current.scrollHeight + 2, window.innerHeight * 0.82));
-        calculate();
-        const observer = new ResizeObserver(calculate);
+        recalculateCardHeight();
+        const observer = new ResizeObserver(recalculateCardHeight);
         observer.observe(cardContentRef.current);
-        window.addEventListener('resize', calculate);
+        const mutationObserver = new MutationObserver(recalculateCardHeight);
+        mutationObserver.observe(cardContentRef.current, {attributes: true, childList: true, subtree: true});
+        const onResize = () => {
+            setViewportHeight(window.innerHeight);
+            recalculateCardHeight();
+        };
+        window.addEventListener('resize', onResize);
         return () => {
             observer.disconnect();
-            window.removeEventListener('resize', calculate);
+            mutationObserver.disconnect();
+            window.removeEventListener('resize', onResize);
         };
-    }, [view, quizList, dashboard, currentQuestion, leaderboard, participantCount, answerStats, editingQuiz]);
+    }, [view, quizList, dashboard, currentQuestion, leaderboard, participantCount, answerStats, editingQuiz, recalculateCardHeight]);
 
     useEffect(() => {
         if (view === 'history' || view === 'profile' || view === 'quiz-list') {
@@ -408,7 +419,7 @@ export function App() {
 
     const activeQuiz = view === 'quiz';
     const isAuthView = view === 'auth';
-    const cardOffsetY = isAuthView ? 0 : -64;
+    const cardOffsetY = isAuthView ? Math.max(0, (viewportHeight - (cardHeight || 0)) / 2 - 20) : 0;
 
     return (
         <div className={`app ${theme} ${uiReady ? 'ready' : 'no-transitions'}`}>
@@ -451,7 +462,9 @@ export function App() {
                                                                      setView('create-quiz');
                                                                  }}/>}
                             {view === 'join' && <JoinCard onJoin={joinByCode}/>}
-                            {view === 'history' && <HistoryCard dashboard={dashboard} role={user?.role}/>}
+                            {view === 'history' &&
+                                <HistoryCard dashboard={dashboard} role={user?.role}
+                                             onContentChange={recalculateCardHeight}/>}
                             {view === 'create-quiz' && <CreateQuizCard quiz={editingQuiz} onCreateQuiz={createQuiz}
                                                                        onAddQuestion={addQuestionToQuiz}
                                                                        onUpdateQuestion={updateQuestionInQuiz}
@@ -748,7 +761,7 @@ function JoinCard({onJoin}) {
     </div>;
 }
 
-function HistoryCard({dashboard, role}) {
+function HistoryCard({dashboard, role, onContentChange}) {
     const groupedParticipations = (dashboard?.participations || []).reduce((acc, participation) => {
         const quizId = participation.session.quiz.id;
         if (!acc[quizId]) {
@@ -766,7 +779,8 @@ function HistoryCard({dashboard, role}) {
         <div className="stack field-full">{role === 'ORGANIZER' ? dashboard?.quizzes?.map((q) => <article
             className="tile" key={q.id}>{q.title}<span>Сессий: {q._count.sessions}</span>
         </article>) : Object.values(groupedParticipations).map((group) => <details className="history-group"
-                                                                                    key={group.quizId}>
+                                                                                    key={group.quizId}
+                                                                                    onToggle={() => requestAnimationFrame(() => onContentChange?.())}>
             <summary className="tile">
                 <b>{group.quizTitle}</b>
                 <span>Игр: {group.games.length}</span>

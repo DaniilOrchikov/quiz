@@ -178,7 +178,7 @@ body, html, #root {
     position: relative;
     z-index: 2;
     display: grid;
-    place-items: center;
+    place-items: start center;
     min-height: calc(100vh - 120px);
     padding: 12px 20px 20px;
     overflow: hidden;
