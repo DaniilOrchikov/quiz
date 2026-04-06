@@ -222,7 +222,7 @@ body, html, #root {
     justify-items: center;
 }
 
-input, select, button {
+input:not([type='checkbox']):not([type='radio']), select, button {
     border: 2px solid transparent;
     border-radius: var(--radius-sub);
     padding: 12px 14px;
@@ -236,13 +236,13 @@ input, select, button {
     text-align: left;
 }
 
-input, select {
+input:not([type='checkbox']):not([type='radio']), select {
     background: transparent;
     color: var(--text);
     border-color: color-mix(in oklab, var(--text) 22%, transparent);
 }
 
-input:focus, select:focus, button:focus-visible {
+input:not([type='checkbox']):not([type='radio']):focus, select:focus, button:focus-visible {
     outline: none;
     border-color: var(--accent);
 }
@@ -378,6 +378,15 @@ button.ghost {
     display: flex;
     align-items: center;
     gap: 12px;
+}
+
+.option-native-control {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
 }
 
 .option-indicator {

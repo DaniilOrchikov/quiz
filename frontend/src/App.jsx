@@ -919,11 +919,17 @@ function QuestionCard({question, totalQuestions, onSubmit, onLeave, user, answer
         )}
         {user?.role === 'PARTICIPANT' && (
             <>
-                {!submitted && <div className="stack field-full">{question.options.map((o) => <button key={o.id}
-                                                                                                      className={"field-full " + `option option-answer ${selected.includes(o.id) ? 'active' : ''}`}
-                                                                                                      onClick={() => toggle(o.id)}>
-                    <span className={`option-indicator ${question.allowMultiple ? 'checkbox' : 'radio'} ${selected.includes(o.id) ? 'checked' : ''}`}
-                          aria-hidden="true"/>{o.text}</button>)}</div>}
+                {!submitted && <div className="stack field-full">{question.options.map((o) => <label key={o.id}
+                                                                                                     className={"field-full " + `option option-answer ${selected.includes(o.id) ? 'active' : ''}`}>
+                    <input
+                        className="option-native-control"
+                        type={question.allowMultiple ? 'checkbox' : 'radio'}
+                        name={`question-${question.id}`}
+                        checked={selected.includes(o.id)}
+                        onChange={() => toggle(o.id)}
+                    />
+                    <span>{o.text}</span>
+                </label>)}</div>}
                 {!submitted
                     ? <button className="field-half" onClick={() => {
                         onSubmit(selected);
