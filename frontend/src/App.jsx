@@ -517,7 +517,8 @@ export function App() {
                             {view === 'quiz' && <QuestionCard question={currentQuestion}
                                                               totalQuestions={session?.quiz?.questionCount || 0}
                                                               onSubmit={submitAnswer} onLeave={leaveQuiz} user={user}
-                                                              answerStats={answerStats}/>}
+                                                              answerStats={answerStats}
+                                                              onContentChange={recalculateCardHeight}/>}
                             {view === 'results' &&
                                 <ResultsCard leaderboard={leaderboard}
                                              onBack={() => setView(user?.role === 'ORGANIZER' ? 'quizzes' : 'join')}
@@ -895,15 +896,20 @@ function WaitingCard({session, user, onStart, onCancel, onLeave, participantCoun
     </div>;
 }
 
-function QuestionCard({question, totalQuestions, onSubmit, onLeave, user, answerStats}) {
+function QuestionCard({question, totalQuestions, onSubmit, onLeave, user, answerStats, onContentChange}) {
     const [selected, setSelected] = useState([]);
     const [submitted, setSubmitted] = useState(false);
     useEffect(() => setSelected([]), [question?.id]);
     useEffect(() => setSubmitted(false), [question?.id]);
+    useEffect(() => {
+        onContentChange?.();
+    }, [question?.id, question?.imageUrl, onContentChange]);
     if (!question) return <p>Ожидаем вопрос...</p>;
     const toggle = (id) => setSelected((prev) => question.allowMultiple ? (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]) : [id]);
     return <div className="stack centered"><h2>Вопрос {question.orderIndex + 1}/{totalQuestions || '?'}</h2>
-        <p>{question.prompt}</p>{question.imageUrl && <img className="preview" src={question.imageUrl} alt="Вопрос"/>}
+        <p>{question.prompt}</p>{question.imageUrl && <img className="preview" src={question.imageUrl} alt="Вопрос"
+                                                           onLoad={() => onContentChange?.()}
+                                                           onError={() => onContentChange?.()}/>}
         {user?.role === 'ORGANIZER' && (
             <div className="stack">
                 <p>Ответили: <b>{answerStats.answeredPlayers}</b> / {answerStats.totalPlayers}</p>
