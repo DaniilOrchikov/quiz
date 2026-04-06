@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {AnimatePresence, motion} from 'framer-motion';
 import {io} from 'socket.io-client';
 import {Header} from './components/Header.jsx';
@@ -13,49 +13,14 @@ import {HistoryCard} from './components/HistoryCard.jsx';
 import {WaitingCard} from './components/WaitingCard.jsx';
 import {QuestionCard} from './components/QuestionCard.jsx';
 import {ResultsCard} from './components/ResultsCard.jsx';
+import {request, toRuError, WS_URL} from './api/client.js';
+import {useStoredState} from './hooks/useStoredState.js';
+import {useCardHeight} from './hooks/useCardHeight.js';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-const WS_URL = import.meta.env.VITE_WS_URL || API_URL;
 const STORAGE_KEY = 'quiz_app_state_v1';
 
-function readStoredState() {
-    try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-    } catch {
-        return {};
-    }
-}
-
-async function request(path, method = 'GET', token, body) {
-    const response = await fetch(`${API_URL}${path}`, {
-        method,
-        headers: {
-            'Content-Type': 'application/json',
-            ...(token ? {Authorization: `Bearer ${token}`} : {})
-        },
-        body: body ? JSON.stringify(body) : undefined
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
-    return data;
-}
-
-function toRuError(message) {
-    const map = {
-        'Failed to fetch': 'Не удалось подключиться к серверу',
-        'NetworkError when attempting to fetch resource.': 'Ошибка сети при обращении к серверу',
-        'Invalid credentials': 'Неверный email или пароль',
-        Unauthorized: 'Требуется авторизация',
-        Forbidden: 'Недостаточно прав',
-        'Quiz not found': 'Квиз не найден',
-        'Session not found': 'Сессия не найдена',
-        'Question must have at least one correct option': 'Укажите хотя бы один правильный вариант ответа'
-    };
-    return map[message] || message || 'Произошла ошибка';
-}
-
 export function App() {
-    const stored = readStoredState();
+    const stored = useStoredState(STORAGE_KEY, {});
     const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
     const [token, setToken] = useState(localStorage.getItem('token'));
     const [user, setUser] = useState(null);
@@ -81,14 +46,8 @@ export function App() {
     const {toasts, pushToast, removeToast} = useToasts();
 
     const socketRef = useRef(null);
-    const cardContentRef = useRef(null);
-    const [cardHeight, setCardHeight] = useState(null);
-    const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
     const [uiReady, setUiReady] = useState(false);
-    const recalculateCardHeight = useCallback(() => {
-        if (!cardContentRef.current) return;
-        setCardHeight(Math.min(cardContentRef.current.scrollHeight + 2, window.innerHeight * 0.82));
-    }, []);
+    const {cardContentRef, cardHeight, viewportHeight, recalculateCardHeight} = useCardHeight([view, quizList, dashboard, currentQuestion, leaderboard, participantCount, answerStats, editingQuiz]);
 
     useEffect(() => {
         document.body.dataset.theme = theme;
@@ -224,25 +183,6 @@ export function App() {
             answerStats
         }));
     }, [view, session, currentQuestion, leaderboard, secondsLeft, questionEndsAt, answerStats]);
-
-    useLayoutEffect(() => {
-        if (!cardContentRef.current) return;
-        recalculateCardHeight();
-        const observer = new ResizeObserver(recalculateCardHeight);
-        observer.observe(cardContentRef.current);
-        const mutationObserver = new MutationObserver(recalculateCardHeight);
-        mutationObserver.observe(cardContentRef.current, {attributes: true, childList: true, subtree: true});
-        const onResize = () => {
-            setViewportHeight(window.innerHeight);
-            recalculateCardHeight();
-        };
-        window.addEventListener('resize', onResize);
-        return () => {
-            observer.disconnect();
-            mutationObserver.disconnect();
-            window.removeEventListener('resize', onResize);
-        };
-    }, [view, quizList, dashboard, currentQuestion, leaderboard, participantCount, answerStats, editingQuiz, recalculateCardHeight]);
 
     useEffect(() => {
         if (view === 'history' || view === 'profile' || view === 'quiz-list') {
