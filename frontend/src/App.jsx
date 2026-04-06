@@ -513,7 +513,7 @@ export function App() {
                                                                        onBack={backFromQuizEditor}/>}
                             {view === 'waiting' &&
                                 <WaitingCard session={session} user={user} onStart={startQuiz} onCancel={cancelQuiz}
-                                             participantCount={participantCount}/>}
+                                             onLeave={leaveQuiz} participantCount={participantCount}/>}
                             {view === 'quiz' && <QuestionCard question={currentQuestion}
                                                               totalQuestions={session?.quiz?.questionCount || 0}
                                                               onSubmit={submitAnswer} onLeave={leaveQuiz} user={user}
@@ -855,11 +855,19 @@ function HistoryCard({dashboard, role, onContentChange}) {
         acc[quizId].games.push(participation);
         return acc;
     }, {});
+    const organizerHistory = dashboard?.quizzes || [];
+    const participantHistory = Object.values(groupedParticipations);
+    const isOrganizer = role === 'ORGANIZER';
+    const isHistoryEmpty = isOrganizer ? organizerHistory.length === 0 : participantHistory.length === 0;
+    const emptyHistoryLabel = isOrganizer
+        ? 'Пока не было запущено ни одного квиза'
+        : 'Пока не было сыграно ни одного квиза';
 
     return <div className="stack centered"><h2>История</h2>
-        <div className="stack field-full">{role === 'ORGANIZER' ? dashboard?.quizzes?.map((q) => <article
+        {isHistoryEmpty && <p>{emptyHistoryLabel}</p>}
+        <div className="stack field-full">{isOrganizer ? organizerHistory.map((q) => <article
             className="tile" key={q.id}>{q.title}<span>Сессий: {q._count.sessions}</span>
-        </article>) : Object.values(groupedParticipations).map((group) => <details className="history-group"
+        </article>) : participantHistory.map((group) => <details className="history-group"
                                                                                     key={group.quizId}
                                                                                     onToggle={() => requestAnimationFrame(() => onContentChange?.())}>
             <summary className="tile">
@@ -876,13 +884,14 @@ function HistoryCard({dashboard, role, onContentChange}) {
     </div>;
 }
 
-function WaitingCard({session, user, onStart, onCancel, participantCount}) {
-    return <div className="stack"><h2>{session?.quiz?.title || 'Квиз'}</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>
+function WaitingCard({session, user, onStart, onCancel, onLeave, participantCount}) {
+    return <div className="stack centered waiting-card"><h2>{session?.quiz?.title || 'Квиз'}</h2><p>Код комнаты: <b>{session?.roomCode}</b></p>
         {user?.role === 'ORGANIZER' && <p>Подключилось игроков: <b>{participantCount}</b></p>}
-        {user?.role === 'ORGANIZER' && <div className="row-actions">
+        {user?.role === 'ORGANIZER' && <div className="row-actions waiting-actions">
             <button onClick={onStart}>Начать квиз</button>
             <button className="ghost" onClick={onCancel}>Отменить квиз</button>
         </div>}
+        {user?.role === 'PARTICIPANT' && <button className="ghost waiting-leave-button" onClick={onLeave}>Выйти из квиза</button>}
     </div>;
 }
 

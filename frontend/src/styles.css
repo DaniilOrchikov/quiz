@@ -13,6 +13,7 @@
     --space-sm: 8px;
     --space-md: 12px;
     --space-lg: 20px;
+    --button-width: 40%;
 }
 
 body[data-theme='light'] {
@@ -251,7 +252,7 @@ button {
     color: #fff;
     cursor: pointer;
     border: 2px solid transparent;
-    width: 40%;
+    width: var(--button-width);
     align-self: center;
     height: var(--control-height);
     padding: 0 14px;
@@ -326,6 +327,23 @@ button.ghost {
 .row-actions button {
     width: auto;
     min-width: 140px;
+}
+
+.waiting-card {
+    width: 100%;
+}
+
+.waiting-actions {
+    width: 100%;
+}
+
+.waiting-actions button {
+    width: var(--button-width);
+    min-width: 140px;
+}
+
+.waiting-leave-button {
+    margin-top: var(--space-lg);
 }
 
 .option-editor {

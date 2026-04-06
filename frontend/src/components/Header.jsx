@@ -42,7 +42,7 @@ export function Header({ user, session, waiting, activeQuiz, secondsLeft, active
         {activeQuiz && <span className="timer">{secondsLeft}s</span>}
       </div>
 
-      {!isOrganizer && session && (waiting || activeQuiz) ? (
+      {!isOrganizer && session && activeQuiz ? (
         <button className="ghost" onClick={onLeaveQuiz}>Выйти из квиза</button>
       ) : <div style={{ width: 40 }} />}
     </header>
