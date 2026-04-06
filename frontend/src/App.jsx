@@ -419,18 +419,28 @@ export function App() {
     return (
         <div className={`app ${theme} ${uiReady ? 'ready' : 'no-transitions'}`}>
             <GradientBackground disabled={activeQuiz} theme={theme}/>
-            {!isAuthView && <Header
-                user={user}
-                session={session}
-                secondsLeft={secondsLeft}
-                activeQuiz={activeQuiz}
-                waiting={view === 'waiting'}
-                activeView={view === 'create-quiz' || view === 'quiz-list' ? 'quizzes' : view}
-                onNavigate={setView}
-                onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-                theme={theme}
-                onLeaveQuiz={leaveQuiz}
-            />}
+            <AnimatePresence initial={false}>
+                {!isAuthView && <motion.div
+                    key="app-header"
+                    initial={{opacity: 0, y: -20, scale: 0.98}}
+                    animate={{opacity: 1, y: 0, scale: 1}}
+                    exit={{opacity: 0, y: -20, scale: 0.98}}
+                    transition={{duration: 0.22, ease: 'easeOut'}}
+                >
+                    <Header
+                        user={user}
+                        session={session}
+                        secondsLeft={secondsLeft}
+                        activeQuiz={activeQuiz}
+                        waiting={view === 'waiting'}
+                        activeView={view === 'create-quiz' || view === 'quiz-list' ? 'quizzes' : view}
+                        onNavigate={setView}
+                        onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+                        theme={theme}
+                        onLeaveQuiz={leaveQuiz}
+                    />
+                </motion.div>}
+            </AnimatePresence>
 
             <main className={`content ${isAuthView ? 'auth-content' : ''}`}>
                 <motion.section
