@@ -35,6 +35,7 @@ export function HistoryCard({dashboard, role, onContentChange}) {
             <div className="stack history-group-content">
                 {group.games.map((game) => <article className="tile" key={game.id}>
                     <span>Комната: {game.session.roomCode}</span>
+                    <span>Место: {game.place ?? '—'}</span>
                     <span>{game.totalScore} очков</span>
                 </article>)}
             </div>

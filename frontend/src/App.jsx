@@ -68,9 +68,16 @@ export function App() {
                 setView((prev) => (prev === 'auth' ? 'profile' : prev));
             })
             .catch(() => {
+                localStorage.removeItem('token');
                 setToken(null);
                 setUser(null);
             });
+    }, [token]);
+
+    useEffect(() => {
+        if (!token) {
+            setView('auth');
+        }
     }, [token]);
 
     useEffect(() => {
@@ -481,4 +488,3 @@ export function App() {
         </div>
     );
 }
-
