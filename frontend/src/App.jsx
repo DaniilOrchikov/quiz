@@ -568,9 +568,6 @@ function AuthCard({onSubmit}) {
                         ]}
                     />
                 </>}
-                {isRegister && step === 'confirm' &&
-                    <input className="field-full" placeholder="Код подтверждения" value={form.code}
-                           onChange={(e) => setForm({...form, code: e.target.value})} required/>}
                 <button>Продолжить</button>
             </form>
             <button type="button" className="link-button" onClick={() => {
