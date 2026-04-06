@@ -371,12 +371,12 @@ button.ghost {
     min-height: var(--control-height);
     height: var(--control-height);
     padding: 0 14px;
-    transition: border-color .2s ease, border-width .2s ease;
+    transition: border-color .2s ease, box-shadow .2s ease;
 }
 
 .option.active {
-    border-width: 2px;
     border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .option-answer {
@@ -386,12 +386,41 @@ button.ghost {
 }
 
 .option-native-control {
+    appearance: none;
+    -webkit-appearance: none;
     width: 18px;
     height: 18px;
     margin: 0;
     flex-shrink: 0;
-    accent-color: var(--accent);
+    border: 1px solid var(--text);
+    border-radius: 4px;
+    background: transparent;
+    display: grid;
+    place-items: center;
     cursor: pointer;
+    transition: border-color .2s ease;
+}
+
+.option-native-control[type='radio'] {
+    border-radius: 50%;
+}
+
+.option-native-control::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: inherit;
+    background: var(--accent);
+    transform: scale(0);
+    transition: transform .15s ease;
+}
+
+.option-native-control:checked {
+    border-color: var(--accent);
+}
+
+.option-native-control:checked::before {
+    transform: scale(1);
 }
 
 .option-indicator {
