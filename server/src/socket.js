@@ -8,6 +8,7 @@ import { assertSessionLive, evaluateAnswer, getLeaderboard } from './services/se
 const roomName = (sessionId) => `session:${sessionId}`;
 const sessionTimers = new Map();
 const questionRuntime = new Map();
+const isQuestionTimeExpired = (runtime) => !runtime || (Date.now() - runtime.startedAt) >= (runtime.durationSec * 1000);
 
 async function getSessionWithQuiz(sessionId) {
   return prisma.quizSession.findUnique({
@@ -274,6 +275,11 @@ export function createSocketServer(httpServer) {
         if (!session) throw new Error('Session not found');
         assertSessionLive(session);
         if (session.currentQuestionId !== questionId) throw new Error('This question is no longer active');
+
+        const runtime = questionRuntime.get(sessionId);
+        if (!runtime || runtime.questionId !== questionId || isQuestionTimeExpired(runtime)) {
+          throw new Error('Время на ответ вышло');
+        }
 
         const existing = await prisma.answer.findFirst({
           where: {

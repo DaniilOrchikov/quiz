@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 
-export function QuestionCard({question, totalQuestions, onSubmit, onLeave, user, answerStats, onContentChange}) {
+export function QuestionCard({question, totalQuestions, onSubmit, onLeave, user, answerStats, secondsLeft, onContentChange}) {
     const [selected, setSelected] = useState([]);
     const [submitted, setSubmitted] = useState(false);
     useEffect(() => setSelected([]), [question?.id]);
@@ -9,6 +9,7 @@ export function QuestionCard({question, totalQuestions, onSubmit, onLeave, user,
         onContentChange?.();
     }, [question?.id, question?.imageUrl, onContentChange]);
     if (!question) return <p>Ожидаем вопрос...</p>;
+    const isAnswerWindowOpen = typeof secondsLeft === 'number' ? secondsLeft > 0 : true;
     const toggle = (id) => setSelected((prev) => question.allowMultiple ? (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]) : [id]);
     return <div className="stack centered"><h2>Вопрос {question.orderIndex + 1}/{totalQuestions || '?'}</h2>
         <p>{question.prompt}</p>{question.imageUrl && <img className="preview" src={question.imageUrl} alt="Вопрос"
@@ -30,17 +31,21 @@ export function QuestionCard({question, totalQuestions, onSubmit, onLeave, user,
                         type={question.allowMultiple ? 'checkbox' : 'radio'}
                         name={`question-${question.id}`}
                         checked={selected.includes(o.id)}
+                        disabled={!isAnswerWindowOpen}
                         onChange={() => toggle(o.id)}
                     />
                     <span>{o.text}</span>
                 </label>)}</div>}
                 {!submitted
-                    ? <button className="field-half" onClick={() => {
-                        onSubmit(selected);
-                        setSubmitted(true);
-                    }} disabled={!selected.length}>Ответить</button>
+                    ? <button className="field-half" onClick={async () => {
+                        const accepted = await onSubmit(selected);
+                        if (accepted) {
+                            setSubmitted(true);
+                        }
+                    }} disabled={!selected.length || !isAnswerWindowOpen}>Ответить</button>
                     :
                     <p>Ответ отправлен. Ответили: <b>{answerStats.answeredPlayers}</b> / {answerStats.totalPlayers}</p>}
+                {!submitted && !isAnswerWindowOpen && <p>Время на ответ вышло</p>}
             </>
         )}
     </div>;

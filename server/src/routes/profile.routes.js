@@ -48,5 +48,36 @@ profileRouter.get('/dashboard', async (req, res) => {
     orderBy: { joinedAt: 'desc' }
   });
 
-  return res.json({ role: req.user.role, participations });
+  const sessionIds = [...new Set(participations.map((participation) => participation.sessionId))];
+  const sessionParticipants = sessionIds.length
+    ? await prisma.sessionParticipant.findMany({
+      where: { sessionId: { in: sessionIds } },
+      select: {
+        sessionId: true,
+        userId: true,
+        totalScore: true,
+        joinedAt: true
+      },
+      orderBy: [{ totalScore: 'desc' }, { joinedAt: 'asc' }]
+    })
+    : [];
+
+  const ranksBySession = sessionParticipants.reduce((acc, participant) => {
+    if (!acc[participant.sessionId]) {
+      acc[participant.sessionId] = [];
+    }
+    acc[participant.sessionId].push(participant);
+    return acc;
+  }, {});
+
+  const participationsWithPlace = participations.map((participation) => {
+    const rows = ranksBySession[participation.sessionId] || [];
+    const place = rows.findIndex((row) => row.userId === participation.userId) + 1;
+    return {
+      ...participation,
+      place: place || null
+    };
+  });
+
+  return res.json({ role: req.user.role, participations: participationsWithPlace });
 });
