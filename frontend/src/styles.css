@@ -366,11 +366,16 @@ button.ghost {
     background: transparent;
     color: var(--text);
     width: 100%;
-    border: 2px solid color-mix(in oklab, var(--text) 22%, transparent);
-    transition: border-color .2s ease;
+    border: 1px solid color-mix(in oklab, var(--text) 22%, transparent);
+    border-radius: var(--radius-sub);
+    min-height: var(--control-height);
+    height: var(--control-height);
+    padding: 0 14px;
+    transition: border-color .2s ease, border-width .2s ease;
 }
 
 .option.active {
+    border-width: 2px;
     border-color: var(--accent);
 }
 
